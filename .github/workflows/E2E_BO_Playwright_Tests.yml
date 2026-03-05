@@ -1,0 +1,299 @@
+name: E2E_BO Playwright Tests
+on:
+  workflow_dispatch:
+    inputs:
+      testomat_report:
+        description: 'Generate Testomat report'
+        required: false
+        default: false
+        type: boolean
+      testomat_title:
+        description: 'Testomat report title'
+        required: false
+        default: 'Playwright Automation'
+        type: string
+  schedule:
+    - cron: '45 11 * * 1-5'
+jobs:
+  # Job 1: Launch Testomat.io run (only for scheduled runs or manual with checkbox)
+  launch-testomat-run:
+    if: github.event_name == 'schedule' || inputs.testomat_report == true
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.launch-run.outputs.run-id }}
+    defaults:
+      run:
+        working-directory: E2E_BO
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        id: npm-cache
+        with:
+          path: E2E_BO/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('E2E_BO/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Launch Testomat.io run
+        id: launch-run
+        run: |
+          OUTPUT=$(TESTOMATIO=${{ secrets.TESTOMATIO_BO }} TESTOMATIO_ENV='QA3' TESTOMATIO_TITLE="${{ inputs.testomat_title || 'Playwright Automation' }}" npx @testomatio/reporter start)
+          echo "$OUTPUT"
+          RUN_ID=$(echo "$OUTPUT" | tail -1)
+          if [ -z "$RUN_ID" ]; then
+            echo "Error: Failed to get RUN_ID from start command"
+            exit 1
+          fi
+          echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "Extracted RUN_ID: $RUN_ID"
+
+  test:
+    needs: [launch-testomat-run]
+    if: always()
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
+        shardTotal: [60]
+    defaults:
+      run:
+        working-directory: E2E_BO
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/setup-node@v5
+      with:
+        node-version: lts/*
+
+    # Cache npm dependencies
+    - name: Cache node modules
+      uses: actions/cache@v3
+      id: npm-cache
+      with:
+        path: E2E_BO/node_modules
+        key: ${{ runner.os }}-npm-${{ hashFiles('E2E_BO/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
+    # Cache Playwright browsers (key tied to package-lock.json to auto-invalidate on Playwright updates)
+    - name: Cache Playwright browsers
+      uses: actions/cache@v3
+      id: playwright-cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ hashFiles('E2E_BO/package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+
+    # Install system dependencies only if browsers were not cached
+    - name: Install Playwright system dependencies
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install-deps chromium
+
+    - name: Run E2E_BO Playwright tests (Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+      run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      env:
+        # Environment flag
+        STAGING: ${{ secrets.STAGING }}
+
+        # Shard index for account rotation (passed to Playwright)
+        PLAYWRIGHT_SHARD_INDEX: ${{ matrix.shardIndex }}
+
+        # Authentication credentials - 20 rotating accounts per type
+        # BO Pro accounts (qa-team+pro1@example.com to qa-team+pro20@example.com)
+        LOGINBOPRO_1: 'qa-team+pro1@example.com'
+        LOGINBOPRO_2: 'qa-team+pro2@example.com'
+        LOGINBOPRO_3: 'qa-team+pro3@example.com'
+        LOGINBOPRO_4: 'qa-team+pro4@example.com'
+        LOGINBOPRO_5: 'qa-team+pro5@example.com'
+        LOGINBOPRO_6: 'qa-team+pro6@example.com'
+        LOGINBOPRO_7: 'qa-team+pro7@example.com'
+        LOGINBOPRO_8: 'qa-team+pro8@example.com'
+        LOGINBOPRO_9: 'qa-team+pro9@example.com'
+        LOGINBOPRO_10: 'qa-team+pro10@example.com'
+        LOGINBOPRO_11: 'qa-team+pro11@example.com'
+        LOGINBOPRO_12: 'qa-team+pro12@example.com'
+        LOGINBOPRO_13: 'qa-team+pro13@example.com'
+        LOGINBOPRO_14: 'qa-team+pro14@example.com'
+        LOGINBOPRO_15: 'qa-team+pro15@example.com'
+        LOGINBOPRO_16: 'qa-team+pro16@example.com'
+        LOGINBOPRO_17: 'qa-team+pro17@example.com'
+        LOGINBOPRO_18: 'qa-team+pro18@example.com'
+        LOGINBOPRO_19: 'qa-team+pro19@example.com'
+        LOGINBOPRO_20: 'qa-team+pro20@example.com'
+
+        # BO Interne accounts (qa-team+int1@example.com to qa-team+int20@example.com)
+        LOGINBOINT_1: 'qa-team+int1@example.com'
+        LOGINBOINT_2: 'qa-team+int2@example.com'
+        LOGINBOINT_3: 'qa-team+int3@example.com'
+        LOGINBOINT_4: 'qa-team+int4@example.com'
+        LOGINBOINT_5: 'qa-team+int5@example.com'
+        LOGINBOINT_6: 'qa-team+int6@example.com'
+        LOGINBOINT_7: 'qa-team+int7@example.com'
+        LOGINBOINT_8: 'qa-team+int8@example.com'
+        LOGINBOINT_9: 'qa-team+int9@example.com'
+        LOGINBOINT_10: 'qa-team+int10@example.com'
+        LOGINBOINT_11: 'qa-team+int11@example.com'
+        LOGINBOINT_12: 'qa-team+int12@example.com'
+        LOGINBOINT_13: 'qa-team+int13@example.com'
+        LOGINBOINT_14: 'qa-team+int14@example.com'
+        LOGINBOINT_15: 'qa-team+int15@example.com'
+        LOGINBOINT_16: 'qa-team+int16@example.com'
+        LOGINBOINT_17: 'qa-team+int17@example.com'
+        LOGINBOINT_18: 'qa-team+int18@example.com'
+        LOGINBOINT_19: 'qa-team+int19@example.com'
+        LOGINBOINT_20: 'qa-team+int20@example.com'
+
+        # Shared password for all accounts
+        PASSWORDBO: ${{ secrets.PASSWORDBO }}
+
+        # API Authentication - GenericV2 API
+        PARTNER_ID: ${{ secrets.PARTNER_ID }}
+        PARTNER_API_KEY: ${{ secrets.PARTNER_API_KEY }}
+
+        # Cloudflare Access Authentication
+        CF_ACCESS_CLIENT_ID_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_ID_PARTNERS }}
+        CF_ACCESS_CLIENT_SECRET_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_SECRET_PARTNERS }}
+
+        # MySQL Database Connection
+        DB_HOST_QA3: ${{ secrets.DB_HOST_QA3 }}
+        DB_DATABASE_QA3: ${{ secrets.DB_DATABASE_QA3 }}
+        DB_USER_QA3: ${{ secrets.DB_USER_QA3 }}
+        DB_PASSWORD_QA3: ${{ secrets.DB_PASSWORD_QA3 }}
+        DB_PORT_QA3: ${{ secrets.DB_PORT_QA3 }}
+
+        # Elasticsearch (QA3 dedicated cluster on Clever Cloud)
+        ES_HOST_QA3: ${{ secrets.ES_HOST_QA3 }}
+        ES_USER_QA3: ${{ secrets.ES_USER_QA3 }}
+        ES_PASSWORD_QA3: ${{ secrets.ES_PASSWORD_QA3 }}
+
+        # Reporter Testomat (only for scheduled runs or manual with checkbox)
+        TESTOMATIO: ${{ (github.event_name == 'schedule' || inputs.testomat_report == true) && secrets.TESTOMATIO_BO || '' }}
+        TESTOMATIO_ENV: 'QA3'
+        TESTOMATIO_TITLE: ${{ inputs.testomat_title || 'Playwright Automation' }}
+        TESTOMATIO_RUN: ${{ needs.launch-testomat-run.outputs.run-id }}
+        TESTOMATIO_PROCEED: ${{ (github.event_name == 'schedule' || inputs.testomat_report == true) && '1' || '' }}
+
+        # Gmail API Configuration for Google Groups
+        #GOOGLE_GROUPS_ACCESS_TOKEN: {{ secrets.GOOGLE_GROUPS_ACCESS_TOKEN }}
+        GOOGLE_GROUPS_REFRESH_TOKEN: ${{ secrets.GOOGLE_GROUPS_REFRESH_TOKEN }}
+        GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+        GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        GOOGLE_GROUP_ID: ${{ secrets.GOOGLE_GROUP_ID }}
+    - uses: actions/upload-artifact@v4
+      if: ${{ !cancelled() }}
+      with:
+        name: blob-report-${{ matrix.shardIndex }}
+        path: E2E_BO/blob-report
+        retention-days: 1
+
+  merge-reports:
+    if: ${{ !cancelled() }}
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/setup-node@v5
+      with:
+        node-version: lts/*
+
+    - name: Get package-lock.json hash for cache key
+      id: cache-keys-merge
+      run: |
+        echo "npm-hash=${{ hashFiles('E2E_BO/package-lock.json') }}" >> $GITHUB_OUTPUT
+
+    - name: Cache node modules
+      uses: actions/cache@v3
+      id: npm-cache-merge
+      with:
+        path: E2E_BO/node_modules
+        key: ${{ runner.os }}-npm-${{ steps.cache-keys-merge.outputs.npm-hash }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
+    - name: Install dependencies
+      if: steps.npm-cache-merge.outputs.cache-hit != 'true'
+      working-directory: E2E_BO
+      run: npm ci
+
+    - name: Download all shard reports
+      uses: actions/download-artifact@v5
+      with:
+        pattern: blob-report-*
+        path: E2E_BO/all-blob-reports
+        merge-multiple: true
+
+    - name: Debug downloaded artifacts
+      working-directory: E2E_BO
+      run: |
+        echo "Contents of all-blob-reports directory:"
+        ls -laR all-blob-reports/ || echo "all-blob-reports directory does not exist"
+
+    - name: Merge reports
+      run: npx playwright merge-reports --reporter html ./all-blob-reports
+      working-directory: E2E_BO
+
+    - name: List generated files (debug)
+      working-directory: E2E_BO
+      run: |
+        echo "Contents of E2E_BO directory:"
+        ls -la
+        echo "Contents of playwright-report (if exists):"
+        ls -la playwright-report/ || echo "playwright-report directory does not exist"
+
+    - name: Upload merged HTML report
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report-merged
+        path: E2E_BO/playwright-report/
+        retention-days: 1
+
+  # Job 4: Finish Testomat.io run (only for scheduled runs or manual with checkbox)
+  finish-testomat-run:
+    if: (!cancelled()) && (github.event_name == 'schedule' || inputs.testomat_report == true)
+    needs: [launch-testomat-run, test, merge-reports]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: E2E_BO
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        id: npm-cache
+        with:
+          path: E2E_BO/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('E2E_BO/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Finish Testomat.io run
+        run: |
+          TESTOMATIO=${{ secrets.TESTOMATIO_BO }} TESTOMATIO_RUN=${{ needs.launch-testomat-run.outputs.run-id }} npx @testomatio/reporter finish
+          echo "Testomat.io run finished: ${{ needs.launch-testomat-run.outputs.run-id }}"

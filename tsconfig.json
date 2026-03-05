@@ -1,0 +1,36 @@
+{
+  "ts-node": {
+      "files": true
+    },
+  "compilerOptions": {
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "types": [
+      "node"
+    ],
+    "declaration": true,
+    "skipLibCheck": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fixtures/*": ["fixtures/*"],
+      "@pages/*": ["pages/*"],
+      "@utils/*": ["utils/*"],
+      "@testdata/*": ["testdata/*"],
+      "@root/*": ["./*"]
+    }
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
