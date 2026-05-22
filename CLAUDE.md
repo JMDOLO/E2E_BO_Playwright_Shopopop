@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## File Access Permissions
+
+- **Read**: tout le repo `/Users/jean-michel/Documents/qa-E2E-tests/` (y compris racine, autres dossiers)
+- **Write/Edit**: uniquement dans `E2E_BO/` et `.claude/` (commandes slash, config)
+- **Repos Shopopop** (`/Users/jean-michel/Documents/Backoffice`, `bo-api`, `delivery-api`): **lecture seule** (Grep, Glob, Read, git log/blame/diff). Ne JAMAIS modifier, commiter, pusher, checkout, stash.
+- **Commandes slash**: toujours dans `/Users/jean-michel/Documents/qa-E2E-tests/.claude/commands/`
+
 ## General Principles
 
 **CRITICAL**: Take your time and produce quality work. Think carefully before implementing changes, ensure code is clean, well-documented, and follows project patterns. Quality over speed.
@@ -110,6 +117,20 @@ Configuration in `tsconfig.json` under `compilerOptions.paths`.
 
 Always apply changes to BOTH files and commit them together.
 
+### Commands & Scripts Synchronization Rule
+
+**CRITICAL**: Commands and scripts exist at **two locations** and must remain **identical**:
+
+1. **Commands** (source of truth: repo root):
+   - `/.claude/commands/*.md` (repository root)
+   - `/E2E_BO/.claude/commands-copy/*.md` (read-only mirror, renamed to avoid duplicate detection)
+
+2. **Scripts** (source of truth: `~/.claude/scripts/`):
+   - `~/.claude/scripts/trace-analyzer.ts` (user-level, used by CLI)
+   - `/E2E_BO/.claude/scripts/trace-analyzer.ts` (copy for workspace visibility)
+
+Always apply changes to BOTH locations. The root/user-level files are the ones actually executed; the E2E_BO copies are read-only mirrors for the user's workspace.
+
 ### Documentation Synchronization Rule
 
 When making **refactorings or architecture changes**, update BOTH `CLAUDE.md` and `README.md`. Not needed for simple test additions or minor bug fixes.
@@ -200,7 +221,7 @@ Key settings in `playwright.config.ts`:
 - **Custom matchers**: Extended with `playwright-expect` package
 - **Screenshots**: On all tests
 - **Video/Trace**: Retained on failure
-- **testIgnore**: `manual-cleanup.spec.ts` excluded except from VS Code Playwright extension
+- **testIgnore**: `manual-cleanup.spec.ts` and `*.spec.claude.ts` excluded except from VS Code Playwright extension
 
 **Reporters:**
 
@@ -294,7 +315,7 @@ export class ProDeliveryDetails {
 ```typescript
 import { createDeliveryAPI } from '@utils/Helpers/createDeliveryAPI.helpers';
 
-// All parameters optional (defaults: drive_alim1, recipient_pro)
+// All parameters optional (defaults: drive_alim1, newRecipient (Faker-generated))
 const deliveryId = await createDeliveryAPI();
 
 // With custom values

@@ -11,22 +11,21 @@
       "DOM"
     ],
     "esModuleInterop": true,
-    "module": "commonjs",
+    "module": "preserve",
     "types": [
       "node"
     ],
     "declaration": true,
     "skipLibCheck": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
-      "@fixtures/*": ["fixtures/*"],
-      "@pages/*": ["pages/*"],
-      "@utils/*": ["utils/*"],
-      "@testdata/*": ["testdata/*"],
+      "@fixtures/*": ["./fixtures/*"],
+      "@pages/*": ["./pages/*"],
+      "@utils/*": ["./utils/*"],
+      "@testdata/*": ["./testdata/*"],
       "@root/*": ["./*"]
     }
   },

@@ -7,7 +7,7 @@ test.describe(`BO-1856 - Décalage de livraison @S6b2f4bd0`, () => {
   test(`Statut "Disponible" - Décalage Date et Créneau - passant @T0b35df94`, async ({ page }) => {
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Edit date and time slot
     const dateTimeSlot = new ProDeliveryDetails(page);

@@ -9,7 +9,7 @@ export class InternalHistory {
 
   // Click history Tab
   async clickHistoryTab() {
-    return this.page.locator(`//div[@data-node-key='history']`).click();
+    return this.page.locator(`//div[contains(@id,'history')]`).click();
   }
 
   // Delivery creation message

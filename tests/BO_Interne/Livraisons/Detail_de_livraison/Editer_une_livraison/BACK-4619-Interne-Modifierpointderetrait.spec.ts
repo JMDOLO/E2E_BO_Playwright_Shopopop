@@ -1,6 +1,5 @@
 import { testInterne as test, expect } from '@fixtures/auth.fixture';
 import { createDeliveryAPI, buildAndGotoDeliveryURL } from '@utils/Helpers/createDeliveryAPI.helpers';
-import * as users from '@testdata/users.json';
 import * as drives from '@testdata/drives.json';
 import { InternalDeliveryDetails } from '@pages/BO_Interne/Livraisons/Liste_des_livraisons/Detail_de_livraison/InternalDeliveryDetails';
 import { InternalDeliveryPage } from '@pages/BO_Interne/Livraisons/InternalDeliveryPage';
@@ -17,37 +16,54 @@ test.describe(`BACK-4619 - Modifier le point de retrait @S6a021de1`, () => {
     deliveryDetailsSuccessMessage = new DeliveryDetailsSuccessMessage(page);
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI(drives.drive_alim1,users.recipient_interne));
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Update pickup point
     // Fill and pickup point
     await updatePickupPoint.fillAndSelectPickupPoint(drives.drive_fleur1.name);
+    await updatePickupPoint.waitForDistanceLoading(); // Remove once the API distance fix has been applied
 
     // Save changes
     await saveDeliveryChanges.clickDeliveryDetailsSaveButton();
 
     // Check that the right success alert is displayed and close the toaster
     await deliveryDetailsSuccessMessage.deliveryUpdateSuccessToaster(deliveryDetailsSuccessMessage.details);
+
+    // Refresh page to check values from database
+    await page.reload();
+    await updatePickupPoint.waitForDistanceLoading();
   });
 
-  test(`Modifier le point de retrait @T7d75a26d`, async ({ page }) => {
+  test(`Modifier le point de retrait @T7d75a26d`, async () => { // A supprimer quand nouveau detail de livraison sera en place
     // Check that pickup point name has been added
     await expect(updatePickupPoint.inputPickupPoint()).toHaveAttribute('value', drives.drive_fleur1.name);
 
   });
 
-  test(`Mise à jour du numéro de téléphone du drive @T3370c18a`, async ({ page }) => {
+  test.fixme(`NEW - Modifier le point de retrait @T7d75a26d`, async () => { // A implémenter quand nouveau detail de livraison sera en place
+    // Check that pickup point name has been added
+    await expect(updatePickupPoint.currentPickupPoint()).toHaveAttribute('title', drives.drive_fleur1.name);
+
+  });
+
+  test(`Mise à jour du numéro de téléphone du drive @T3370c18a`, async () => {
     // Check that pickup point phone number has been updated
     await expect(updatePickupPoint.pickupPointPhoneNumber()).toHaveText(drives.drive_fleur1.phone);
 
   });
 
-  test(`Mise à jour du lien du drive @Ta346cb37`, async ({ page }) => {
+  test(`Mise à jour du lien du drive @Ta346cb37`, async () => { // A supprimer quand nouveau detail de livraison sera en place
     // Access pickup point information sheet
     await updatePickupPoint.clickPickupPointInformationSheet();
 
     // Check that pickup point link has been updated
     await expect(updatePickupPoint.driveLinkinModal()).toContainText(`/drives/${drives.drive_fleur1.id}`);
+
+  });
+
+  test.fixme(`NEW - Mise à jour du lien du drive @Ta346cb37`, async () => { // A implémenter quand nouveau detail de livraison sera en place
+    // Check that pickup point link has been updated
+    await expect(updatePickupPoint.pickupPointInformationSheet()).toHaveAttribute('href', new RegExp(`/drives/${drives.drive_fleur1.id}$`));
 
   });
 });

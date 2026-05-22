@@ -1,6 +1,7 @@
 import { Page } from '@playwright/test';
 import * as url from '@testdata/url.app.json';
-import { getShardCredentials, authenticateWithStateDetection } from '@utils/Helpers/authentication.helpers';
+import * as users from '@testdata/users.json';
+import { authenticateWithStateDetection } from '@utils/Helpers/authentication.helpers';
 
 export class LoginPage {
   readonly page: Page;
@@ -56,22 +57,30 @@ export class LoginPage {
 
   /**
    * Authenticate to BO Interne with environment credentials
-   * Uses smart retry logic with state detection from helper
+   * Uses users.json email + PASSWORDBO env var
+   * Used by no-auth tests (BO-1143, BO-2625)
    */
   async authenticateInternalWithEnv() {
-    const { username, password } = getShardCredentials('internal');
+    const password = process.env.PASSWORDBO;
+    if (!password) {
+      throw new Error('Missing PASSWORDBO environment variable');
+    }
     await this.gotoInternal();
-    await authenticateWithStateDetection(this.page, this, username, password);
+    await authenticateWithStateDetection(this.page, this, users.user_interne.email, password);
   }
 
   /**
    * Authenticate to BO Pro with environment credentials
-   * Uses smart retry logic with state detection from helper
+   * Uses users.json email + PASSWORDBO env var
+   * Used by no-auth tests (BO-1151)
    */
   async authenticateProWithEnv() {
-    const { username, password } = getShardCredentials('pro');
+    const password = process.env.PASSWORDBO;
+    if (!password) {
+      throw new Error('Missing PASSWORDBO environment variable');
+    }
     await this.gotoPro();
-    await authenticateWithStateDetection(this.page, this, username, password);
+    await authenticateWithStateDetection(this.page, this, users.user_pro.email, password);
   }
 };
 

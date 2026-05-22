@@ -8,7 +8,7 @@ test.describe(`BO-1827 - Modifier précisions commande pour CTP @Sea565dc2`, () 
   test(`Statut "Disponible" - Modifier précisions pour CTP - passant @T87338785`, async ({ page }) => {
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Edit order details for CTP
     const orderDetails = new ProDeliveryDetails(page);

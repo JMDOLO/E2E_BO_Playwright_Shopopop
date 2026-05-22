@@ -13,15 +13,21 @@ const ES_INDEX_PATTERN = 'deliveries-*';
 /**
  * Wait for an errand to be indexed in Elasticsearch
  *
- * Polls ES with retry until the document is found or max attempts reached.
+ * Polls ES with retry until the document is found (and optionally reindexed after a given timestamp)
+ * or max attempts reached.
  *
  * @param errandId - The errand ID to search for
+ * @param sinceDateStr - Optional MySQL datetime (`YYYY-MM-DD HH:MM:SS`). When provided, waits until
+ *                      ES has reindexed the doc with `updated_at >= sinceDateStr`. Use this after
+ *                      an `updateErrandTable` that includes `{ field: 'updated_at', value: dateStr }`
+ *                      to avoid matching the initial (pre-update) index state.
  * @param maxAttempts - Maximum number of polling attempts (default: 10)
  * @param delayMs - Delay between attempts in ms (default: 1000)
  * @throws Error if errand is not found after all attempts
  */
 export async function waitForErrandInES(
   errandId: number,
+  sinceDateStr?: string,
   maxAttempts = 10,
   delayMs = 1000
 ): Promise<void> {
@@ -35,6 +41,18 @@ export async function waitForErrandInES(
   const url = `https://${config.host}/${ES_INDEX_PATTERN}/_search`;
   const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
 
+  const filters: object[] = [{ term: { id: errandId } }];
+  if (sinceDateStr) {
+    filters.push({
+      range: {
+        updated_at: {
+          gte: sinceDateStr,
+          format: 'yyyy-MM-dd HH:mm:ss',
+        },
+      },
+    });
+  }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const response = await fetch(url, {
       method: 'POST',
@@ -43,9 +61,7 @@ export async function waitForErrandInES(
         'Authorization': `Basic ${auth}`,
       },
       body: JSON.stringify({
-        query: {
-          terms: { id: [errandId] },
-        },
+        query: { bool: { filter: filters } },
         size: 0,
       }),
     });

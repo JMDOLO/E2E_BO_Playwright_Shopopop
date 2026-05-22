@@ -64,16 +64,20 @@ test('Clear registry', async () => {
   console.log('='.repeat(60) + '\n');
 
   const stats = TestDataRegistry.getStats();
+  const manualStats = TestDataRegistry.getManualStats();
+  const totalItems = stats.errands + stats.users + manualStats.errandstodelete + manualStats.userstodelete;
 
-  if (stats.errands === 0 && stats.users === 0) {
+  if (totalItems === 0) {
     console.log('ℹ️  Registry is already empty. Nothing to clear.\n');
     console.log('='.repeat(60) + '\n');
     return;
   }
 
   console.log('📋 Current registry contains:');
-  console.log(`   - ${stats.errands} errands`);
-  console.log(`   - ${stats.users} users\n`);
+  console.log(`   - ${stats.errands} errands (auto)`);
+  console.log(`   - ${stats.users} users (auto)`);
+  console.log(`   - ${manualStats.errandstodelete} errands (manual)`);
+  console.log(`   - ${manualStats.userstodelete} users (manual)\n`);
 
   console.log('⚠️  This will clear ALL IDs from the registry.');
   console.log('⚠️  Database is NOT affected - deliveries remain in QA3.\n');

@@ -8,7 +8,8 @@
     "test:draft": "DISABLE_TESTOMAT=true playwright test",
     "test:debug": "DISABLE_TESTOMAT=true playwright test --debug",
     "test:headed": "DISABLE_TESTOMAT=true playwright test --headed",
-    "test:ui": "DISABLE_TESTOMAT=true playwright test --ui"
+    "test:ui": "DISABLE_TESTOMAT=true playwright test --ui",
+    "cleanup": "DISABLE_TESTOMAT=true playwright test --config=playwright.cleanup.config.ts"
   },
   "keywords": [],
   "author": "",
@@ -27,7 +28,11 @@
   },
   "dependencies": {
     "@types/mysql": "^2.15.27",
+    "@types/pg": "^8.20.0",
+    "@types/ssh2": "^1.15.5",
     "dotenv": "^17.2.3",
-    "mysql2": "^3.15.3"
+    "mysql2": "^3.15.3",
+    "pg": "^8.20.0",
+    "ssh2": "^1.17.0"
   }
 }

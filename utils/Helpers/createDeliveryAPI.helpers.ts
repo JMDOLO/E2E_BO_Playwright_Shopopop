@@ -8,66 +8,95 @@ import { getAPIConfig } from '@utils/API_Utils/api.config';
 import { createDelivery } from '@utils/API_Utils/delivery.post';
 import { buildDeliveryPayload, Drive, Recipient, OrderInfo } from '@utils/API_Utils/payload.builder';
 import { selectTable } from '@utils/DB_Utils/selectData.db';
-import * as users from '@testdata/users.json';
 import * as drives from '@testdata/drives.json';
+import { newRecipient } from '@testdata/new_recipients';
 import { TestDataRegistry } from '@utils/DB_Utils/testDataRegistry';
 import { LoginPage } from '@pages/BO_Both/Authentification/LoginPage';
 
 /**
+ * Recipient data from the drop_off table
+ */
+/**
+ * Column order follows the drop_off table structure
+ */
+export interface DropOffRecipient {
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  address: string;
+  phone: string;
+  email: string;
+  street_address_1: string;
+  street_address_2: string;
+  zip_code: string;
+  city: string;
+  country: string;
+  location_name: string;
+  recipient_additional_info: string;
+  floor: number;
+  elevator: number;
+  hash: string;
+  location_type: string;
+  door: string;
+  internal_uuid: string;
+}
+
+/**
+ * Result of createDeliveryAPI containing delivery ID and recipient data from DB
+ */
+export interface DeliveryAPIResult {
+  id: number;
+  recipient: DropOffRecipient;
+}
+
+/**
+ * Options for createDeliveryAPI
+ */
+export interface CreateDeliveryAPIOptions {
+  drive?: Drive;
+  recipient?: Recipient;
+  orderInfo?: OrderInfo;
+}
+
+/**
  * Creates a delivery via GenericV2 API
- * This is a faster alternative to creating deliveries through the UI
  *
- * IMPORTANT: This function uses the GenericV2 API endpoint (/v2/deliveries)
- * which properly creates:
- * 1. An entry in the `errand` table with the delivery information
- * 2. An entry in the `drop_off` table with recipient and address information
- * 3. The `errand.drop_off_id` field is populated with the ID from the `drop_off` table
+ * Uses a Faker-generated recipient by default for test isolation (each test gets its own recipient).
+ * Pass a specific recipient from users.json when you need a known user (e.g., pagination tests).
  *
- * Without a valid `drop_off_id`, the delivery will NOT be visible in the mobile application.
- *
- * @param drive - Optional drive/pickup point data from testdata/drives.json (defaults to drives.drive_alim1)
- * @param recipient - Optional recipient data from testdata/users.json (defaults to users.recipient_pro)
- * @param orderInfo - Optional order information (reference, amount, size, additionalInfos)
- * @returns The delivery ID from the database
+ * @param options - Optional overrides for drive, recipient and orderInfo
+ * @returns Delivery ID and recipient data (internal_uuid, name, phone, email) from the drop_off table
  *
  * @example
  * ```typescript
- * import { createDeliveryAPI } from '@utils/Helpers/createDeliveryAPI.helpers';
- * import * as drives from '@testdata/drives.json';
- * import * as users from '@testdata/users.json';
+ * // Default: new unique recipient each time
+ * const { id, recipient } = await createDeliveryAPI();
  *
- * // With all defaults (drive_alim1 and recipient_pro)
- * const deliveryId = await createDeliveryAPI();
+ * // With specific drive
+ * const { id } = await createDeliveryAPI({ drive: drives.drive_fleur1 });
  *
- * // With specific drive only
- * const deliveryId2 = await createDeliveryAPI(drives.drive_alim2);
+ * // With known user (e.g., for pagination/search tests)
+ * const { id } = await createDeliveryAPI({ drive: drives.drive_alim1, recipient: users.recipient_interne });
  *
- * // With specific recipient
- * const deliveryId3 = await createDeliveryAPI(
- *   drives.drive_alim1,
- *   users.recipient_interne
- * );
- *
- * // With custom values for specific test
- * const deliveryId4 = await createDeliveryAPI(
- *   drives.drive_alim1,
- *   users.recipient_pro,
- *   { amount: "500", size: "M", reference: "TESTREF1" }
- * );
+ * // Override order info only
+ * const { id } = await createDeliveryAPI({ orderInfo: { frozenFood: true } });
  * ```
  */
 export async function createDeliveryAPI(
-  drive: Drive = drives.drive_alim1,
-  recipient: Recipient = users.recipient_pro,
-  orderInfo: OrderInfo = {}
-): Promise<number> {
+  options: CreateDeliveryAPIOptions = {}
+): Promise<DeliveryAPIResult> {
+  const drive = options.drive ?? drives.drive_alim1;
+  const actualRecipient = options.recipient ?? newRecipient();
+  const orderInfo = options.orderInfo ?? {};
+
   // Get API configuration
   const config = getAPIConfig();
 
   // Build payload using testdata and optional overrides
-  const payload = buildDeliveryPayload(drive, recipient, orderInfo);
+  const payload = buildDeliveryPayload(drive, actualRecipient, orderInfo);
 
   // Send API request to create delivery (retry with jitter for MySQL deadlock handling)
+  // Note: shard-level deterministic jitter is applied in global-setup.ts to stagger test starts
   const MAX_ATTEMPTS = 5;
   let createResponse!: Awaited<ReturnType<typeof createDelivery>>;
 
@@ -102,49 +131,34 @@ export async function createDeliveryAPI(
   // Wait for the delivery to be processed and written to the database
   await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Get delivery ID from database using the reference
-  const deliveryData = await selectTable(
+  // Get delivery ID and drop_off_id from database
+  const errandData = await selectTable(
     'errand',
     [{ field: 'reference', value: reference }],
-    ['id']
+    ['id', 'drop_off_id']
   );
-  const deliveryId = deliveryData[0].id;
+  const deliveryId = errandData[0].id as number;
+  const dropOffId = errandData[0].drop_off_id as number;
 
-  // Auto-register pour cleanup
+  // Get recipient data from drop_off table
+  const dropOffData = await selectTable(
+    'drop_off',
+    [{ field: 'id', value: dropOffId }],
+    ['first_name', 'last_name', 'full_name', 'address', 'phone', 'email',
+     'street_address_1', 'street_address_2', 'zip_code', 'city', 'country',
+     'location_name', 'recipient_additional_info', 'floor', 'elevator',
+     'hash', 'location_type', 'door', 'internal_uuid']
+  );
+  const recipientData = dropOffData[0] as DropOffRecipient;
+
+  // Auto-register for cleanup
   TestDataRegistry.registerErrand(deliveryId);
 
   console.log(`Delivery ID retrieved: ${deliveryId}`);
 
-  return deliveryId;
+  return { id: deliveryId, recipient: recipientData };
 }
 
-/**
- * Build delivery URL and navigate to it
- * This is the recommended function to use after createDeliveryAPI() when you want to navigate to the delivery
- *
- * @param page - Playwright Page object
- * @param deliveryId - The delivery ID
- * @returns Promise that resolves with the delivery URL
- *
- * @example
- * ```typescript
- * // Simple usage - create delivery and navigate to it
- * const deliveryId = await createDeliveryAPI();
- * await buildAndGotoDeliveryURL(page, deliveryId);
- *
- * // One-liner if you don't need the delivery ID
- * await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
- *
- * // When you need the ID for other operations (DB updates)
- * const deliveryId = await createDeliveryAPI();
- * await updateErrandTable(deliveryId, [...]);
- * await buildAndGotoDeliveryURL(page, deliveryId);
- *
- * // When you need the URL for assertions
- * const deliveryURL = await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
- * await expect(page).toHaveURL(deliveryURL);
- * ```
- */
 /**
  * Waits for delivery detail page data to load with retry/reload
  * Used by both API flow (buildAndGotoDeliveryURL) and UI flow (waitForDeliveryCreationAndRetry)
@@ -164,8 +178,7 @@ export async function waitForDeliveryPageData(page: Page, deliveryURL: string): 
     const result = await Promise.race([
       distanceLoaded.waitFor({ timeout: LOAD_TIMEOUT }).then(() => 'success'),
       errorMessage.waitFor({ timeout: LOAD_TIMEOUT }).then(() => 'error'),
-      new Promise<string>(resolve => setTimeout(() => resolve('timeout'), LOAD_TIMEOUT))
-    ]);
+    ]).catch(() => 'timeout');
 
     if (result === 'success') return;
 
@@ -182,6 +195,7 @@ export async function buildAndGotoDeliveryURL(page: Page, deliveryId: number): P
   // Build the delivery URL (inline logic from buildDeliveryURL)
   const baseUrl = new URL(page.url()).origin;
   const deliveryURL = `${baseUrl}/delivery/${deliveryId}`;
+  //const deliveryURL = `${baseUrl}/detail/${deliveryId}`;
 
   // Navigate to the delivery details page
   await page.goto(deliveryURL);

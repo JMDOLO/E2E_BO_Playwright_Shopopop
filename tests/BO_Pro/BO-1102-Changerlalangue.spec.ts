@@ -14,7 +14,7 @@ test.describe(`BO-1102 - Changer la langue @S07de4aa1`, () => {
 
     // Select language
     await language.hoverSettingsLanguageButton();
-    randomLanguage = getRandomWithIndex(language.languagelist);
+    randomLanguage = getRandomWithIndex(language.languageList);
     await language.selectLanguage(randomLanguage.value);
   });
 

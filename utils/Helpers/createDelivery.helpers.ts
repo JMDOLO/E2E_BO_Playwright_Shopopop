@@ -3,40 +3,43 @@ import { CreateDeliveryStep1Page } from '@pages/BO_Both/Creer_une_livraison/Crea
 import { CreateDeliveryStep2Page } from '@pages/BO_Both/Creer_une_livraison/CreateDeliveryStep2';
 import { CreateDeliveryStep3Page } from '@pages/BO_Both/Creer_une_livraison/CreateDeliveryStep3';
 import { CreateDeliveryStep4Page } from '@pages/BO_Both/Creer_une_livraison/CreateDeliveryStep4';
-import { DeliverySuccessMessage } from '@pages/BO_Both/SuccessMessages';
-import { orderInformation } from '@testdata/order_information';
+import { Toaster } from '@pages/BO_Both/SuccessMessages';
+import { generateOrderInformation } from '@testdata/order_information';
+import { Drive, Recipient } from '@utils/API_Utils/payload.builder';
+import { selectTable } from '@utils/DB_Utils/selectData.db';
 import { TestDataRegistry } from '@utils/DB_Utils/testDataRegistry';
 import { waitForDeliveryPageData } from '@utils/Helpers/createDeliveryAPI.helpers';
 import * as url from '@testdata/url.app.json';
 
 /**
- * Interface for drive data
+ * Error thrown when delivery creation fails and the whole flow must be retried from step 1
  */
-interface Drive {
-  name: string;
-  id: string;
-  trade_type: string;
-  trade_name: string;
+export class RetryFromScratchError extends Error {
+  constructor(message: string) {
+    super(`Delivery creation failed, retrying from scratch: ${message}`);
+    this.name = 'RetryFromScratchError';
+  }
 }
 
 /**
- * Interface for recipient data
+ * Wraps a delivery creation flow with retry on transient creation errors.
+ * On RetryFromScratchError (reload already done), waits for step 1 to be visible and retries.
  */
-interface Recipient {
-  name: string;
-  firstname: string;
-  lastname: string;
-  email: string;
-  phone: string;
-  address: string;
-  shortaddress: string;
-  street: string;
-  zipCode: string;
-  city: string;
-  type: string;
-  floor: number;
-  elevator: boolean;
-  id: number;
+export async function withCreationRetry(
+  step1: CreateDeliveryStep1Page,
+  fn: () => Promise<void>
+): Promise<void> {
+  const maxRetries = 1;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) await step1.buttonStep1().waitFor({ state: 'visible' });
+      await fn();
+      return;
+    } catch (error) {
+      if (error instanceof RetryFromScratchError && attempt < maxRetries) continue;
+      throw error;
+    }
+  }
 }
 
 /**
@@ -140,53 +143,71 @@ async function createDeliveryWithExistingRecipient(
   orderInfo: OrderInfo,
   includeStep4: boolean
 ): Promise<DeliveryCreationResult> {
-  // Use orderInformation from testdata as default, with ability to override
+  // Generate fresh random defaults per call, with ability to override
+  const defaults = generateOrderInformation();
   const {
-    reference = orderInformation.reference,
-    amount = orderInformation.amount,
-    size = orderInformation.size,
-    additionalInfos = orderInformation.additionalInfos,
-    minimalTransportModeUI = orderInformation.minimalTransportModeUI
+    reference = defaults.reference,
+    amount = defaults.amount,
+    size = defaults.size,
+    additionalInfos = defaults.additionalInfos,
+    minimalTransportModeUI = defaults.minimalTransportModeUI
   } = orderInfo;
 
-  // Step 1: Pickup point and recipient selection
-  const step1 = new CreateDeliveryStep1Page(page);
-  await step1.fillAndSelectPickupPoint(drive.name);
-  await step1.fillAndSelectRecipient(recipient.email);
-  await step1.fillAndSelectAddress(recipient.address, recipient.shortaddress);
-  await step1.waitForDistanceLoading();
-  await step1.validateStep1();
+  const maxRetries = 1;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // After reload, wait for step 1 form to be ready
+        const step1 = new CreateDeliveryStep1Page(page);
+        await step1.buttonStep1().waitFor({ state: 'visible' });
+      }
 
-  // Step 2: Order information
-  const step2 = new CreateDeliveryStep2Page(page);
-  await step2.fillReference(reference);
-  await step2.fillAmount(amount);
-  await step2.checkOrderSize(size);
-  await step2.checkTransport(minimalTransportModeUI);
-  await step2.fillAdditionalInfos(additionalInfos);
-  await step2.validateStep2();
+      // Step 1: Pickup point and recipient selection
+      // Selecting the recipient pre-fills the address and validates /addresses/distance
+      // with retry — no need to re-trigger autocomplete via fillAndSelectAddress here.
+      const step1 = new CreateDeliveryStep1Page(page);
+      await step1.fillAndSelectPickupPoint(drive.name);
+      await step1.fillAndSelectRecipient(recipient.email);
+      await step1.validateStep1();
 
-  // Step 3: Delivery date
-  const step3 = new CreateDeliveryStep3Page(page);
-  await step3.selectDeliveryDateTomorrow();
-  await step3.clickDeliveryStartTimeGlobal();
-  await step3.clickDeliveryStartTimeHour();
-  await step3.clickDeliveryStartTimeMinutes();
-  await step3.dateDeliveryBlockLocator().click();
-  // Capture URL before creation trigger to detect redirect to home
-  const urlBeforeValidation = page.url();
-  await step3.validateStep3();
+      // Step 2: Order information
+      const step2 = new CreateDeliveryStep2Page(page);
+      await step2.fillReference(reference);
+      await step2.fillAmount(amount);
+      await step2.checkOrderSize(size);
+      await step2.checkTransport(minimalTransportModeUI);
+      await step2.fillAdditionalInfos(additionalInfos);
+      await step2.validateStep2();
 
-  // Step 4: Final validation (BO Pro only) and wait for delivery creation
-  if (includeStep4) {
-    const step4 = new CreateDeliveryStep4Page(page);
-    await step4.validateStep4();
-    // BO Pro: Wait for delivery creation with retry using Step 4
-    return waitForDeliveryCreationAndRetry(page, step4, true, urlBeforeValidation);
+      // Step 3: Delivery date
+      const step3 = new CreateDeliveryStep3Page(page);
+      await step3.selectDeliveryDateTomorrow();
+      await step3.clickDeliveryStartTimeGlobal();
+      await step3.clickDeliveryStartTimeHour();
+      await step3.clickDeliveryStartTimeMinutes();
+      await step3.dateDeliveryBlockLocator().click();
+      // Capture URL before creation trigger to detect redirect to home
+      const urlBeforeValidation = page.url();
+      await step3.validateStep3();
+
+      // Step 4: Final validation (BO Pro only) and wait for delivery creation
+      if (includeStep4) {
+        const step4 = new CreateDeliveryStep4Page(page);
+        await step4.validateStep4();
+        return await waitForDeliveryCreationAndRetry(page, reference, true, urlBeforeValidation);
+      }
+
+      return await waitForDeliveryCreationAndRetry(page, reference, false, urlBeforeValidation);
+    } catch (error) {
+      if (error instanceof RetryFromScratchError && attempt < maxRetries) {
+        continue;
+      }
+      throw error;
+    }
   }
 
-  // BO Interne: Wait for delivery creation with retry using Step 3
-  return waitForDeliveryCreationAndRetry(page, step3, false, urlBeforeValidation);
+  // Unreachable but TypeScript needs it
+  throw new Error('Delivery creation failed after all retries');
 }
 
 /**
@@ -201,10 +222,13 @@ export interface DeliveryCreationResult {
  * Waits for delivery creation with automatic retry on "too many attempts" error
  * Used in tests that detail all creation steps (BO-1273 style tests)
  *
+ * Delivery ID is resolved via DB lookup on the reference (no toaster click required),
+ * then the page navigates directly to /delivery/{id} after the app's redirect to home settles.
+ *
  * @param page - Playwright Page object
- * @param lastValidationStep - The last step page object (Step3 for Interne, Step4 for Pro)
+ * @param reference - Delivery reference used in Step 2 (unique, used for DB lookup)
  * @param isStep4 - True if using Step4 (BO Pro), false if using Step3 (BO Interne)
- * @param urlBeforeValidation - URL captured before the validation click, used to detect redirect to home
+ * @param urlBeforeValidation - URL captured before the validation click, used to wait for redirect stability before goto
  * @returns Object with delivery URL and ID
  *
  * @example
@@ -212,71 +236,55 @@ export interface DeliveryCreationResult {
  * // For BO Interne (after step 3 validation)
  * const urlBeforeValidation = page.url();
  * await step3.validateStep3();
- * const { url, id } = await waitForDeliveryCreationAndRetry(page, step3, false, urlBeforeValidation);
+ * const { url, id } = await waitForDeliveryCreationAndRetry(page, orderInfo.reference, false, urlBeforeValidation);
  *
  * // For BO Pro (after step 4 validation)
  * const urlBeforeValidation = page.url();
  * await step3.validateStep3();
  * await step4.validateStep4();
- * const { url, id } = await waitForDeliveryCreationAndRetry(page, step4, true, urlBeforeValidation);
+ * const { url, id } = await waitForDeliveryCreationAndRetry(page, orderInfo.reference, true, urlBeforeValidation);
  * ```
  */
 export async function waitForDeliveryCreationAndRetry(
   page: Page,
-  lastValidationStep: CreateDeliveryStep3Page | CreateDeliveryStep4Page,
-  isStep4: boolean = false,
+  reference: string,
+  isStep4: boolean,
   urlBeforeValidation: string
 ): Promise<DeliveryCreationResult> {
-  const message = new DeliverySuccessMessage(page);
+  const toaster = new Toaster(page);
 
   while (true) {
-    // Wait for any notification message to appear (success, tooMuchTry, or inProgress)
-    await page.waitForSelector(`//div[@class='ant-notification-notice-message']`, { timeout: 15000 });
+    // Wait for any notification message to appear (success, tooMuchTry, or inProgress), then read it
+    await toaster.waitForAnyToaster();
+    const messageText = await toaster.getToasterMessageText();
 
-    // Get the toaster message text immediately
-    const messageText = await message.getDeliveryMessageText();
-
-    if (messageText.includes(message.inProgress)) {
+    if (messageText.includes(toaster.inProgress)) {
       // Wait for inProgress to disappear and loop again
       await page.waitForTimeout(6000);
       continue;
     }
 
-    if (messageText.includes(message.success)) {
-      // Wait for redirect to home before clicking "Voir la livraison"
-      // (avoids race: clicking toaster before redirect causes navigation back to home)
+    if (messageText.includes(toaster.success)) {
+      // Resolve delivery ID via DB lookup — the "Voir la livraison" <a> has no href (onClick-only)
+      const rows = await selectTable('errand', [{ field: 'reference', value: reference }], ['id']);
+      const deliveryId = rows[0].id as number;
+
+      const baseURL = isStep4 ? url.url_pro : url.url_interne;
+      const deliveryURL = `${baseURL}/delivery/${deliveryId}`;
+
+      // Wait for the app's own redirect to settle before goto, to avoid navigation race
       await page.waitForURL(url => url.href !== urlBeforeValidation, { timeout: 5000 });
 
-      // Now on home page: click toaster link, wait for navigation, then wait for data to load
-      const deliveryURL = await message.clickViewDeliveryAndGetURL();
+      await page.goto(deliveryURL);
       await waitForDeliveryPageData(page, deliveryURL);
 
-      // Extract delivery ID from URL for cleanup
-      const baseURL = isStep4 ? url.url_pro : url.url_interne;
-      const deliveryIdString = deliveryURL.replace(`${baseURL}/delivery/`, '');
-      const deliveryId = parseInt(deliveryIdString, 10);
-
-      // Guard clause: handle error case first
-      if (isNaN(deliveryId)) {
-        throw new Error(`Failed to extract delivery ID from URL: ${deliveryURL}`);
-      }
-
-      // Happy path: valid delivery ID
       TestDataRegistry.registerErrand(deliveryId);
       return { url: deliveryURL, id: deliveryId };
     }
 
-    if (messageText.includes(message.tooMuchTry) || message.errors.some(err => messageText.includes(err))) {
-      // Transient error (rate limiting or server 502/500) - wait 40s then retry validation
-      await page.waitForTimeout(40000);
-
-      // Retry the last validation step
-      if (isStep4) {
-        await (lastValidationStep as CreateDeliveryStep4Page).validateStep4();
-      } else {
-        await (lastValidationStep as CreateDeliveryStep3Page).validateStep3();
-      }
-      continue;
+    if (messageText.includes(toaster.tooMuchTry) || toaster.errors.some(err => messageText.includes(err))) {
+      await page.reload();
+      throw new RetryFromScratchError(messageText);
     }
 
     // Unexpected message - throw error

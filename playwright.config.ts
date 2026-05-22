@@ -3,20 +3,13 @@ import { expect } from '@playwright/test';
 import { matchers } from 'playwright-expect';
 import dotenv from 'dotenv';
 import path from 'path';
+import { getProStorageStatePath, getInterneStorageStatePath } from '@utils/Helpers/shardAccount.helpers';
 
 // add custom matchers
 expect.extend(matchers);
 
 // Read from ".env" file.
-dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
 // Build reporters array conditionally
 const reporters: any[] = [];
@@ -27,7 +20,8 @@ if (process.env.CI) {
   reporters.push(['blob']);  // For report merging
 
   // Add Testomat reporter if API key is provided (for shared run with sharding)
-  if (process.env.TESTOMATIO) {
+  // DISABLE_TESTOMAT lets us simulate CI=true locally without polluting Testomat
+  if (process.env.TESTOMATIO && !process.env.DISABLE_TESTOMAT) {
     reporters.push([
       '@testomatio/reporter/playwright',
       {
@@ -60,18 +54,20 @@ if (process.env.CI) {
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
+/* Project-level testIgnore overrides the root one (no merge), so we share this list across projects. */
+const draftIgnore = (process.env.CI || !process.env.VSCODE_PID) ? ['**/*.spec.claude.ts'] : [];
+
 export default defineConfig({
   testDir: './tests',
-  /* Ignore manual cleanup test except when running from VS Code Playwright extension */
-  testIgnore: (process.env.CI || !process.env.VSCODE_PID)
-    ? '**/manual-cleanup.spec.ts'
-    : undefined,
+  /* manual-cleanup is handled exclusively by playwright.cleanup.config.ts */
+  /* *.spec.claude.ts (drafts) only runs from VS Code Playwright extension */
+  testIgnore: ['**/manual-cleanup.spec.ts', ...draftIgnore],
   /* Global setup - runs once before all tests start */
   globalSetup: './global-setup.ts',
   /* Global teardown - runs once after all tests complete */
   globalTeardown: './global-teardown.ts',
   /* Maximum time each test can run for (default is 30000ms) */
-  timeout: 90000, // 90 seconds
+  timeout: 60000, // 60 seconds
   /* Maximum time for expect() assertions (default is 5000ms) */
   expect: {
     timeout: 30000, // 30 seconds for assertions like toBeVisible(), toBeHidden()
@@ -88,9 +84,6 @@ export default defineConfig({
   reporter: reporters,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('')`. */
-    // baseURL: 'http://localhost:3000',
-
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'retain-on-failure',
 
@@ -110,48 +103,32 @@ export default defineConfig({
     },
   },
 
-  /* Configure projects for major browsers */
+  /* Configure projects: pro, interne (with storageState), and no-auth (manual login) */
   projects: [
     {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      name: 'pro',
+      testMatch: '**/BO_Pro/**',
+      testIgnore: ['**/Authentification/**', ...draftIgnore],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: getProStorageStatePath(),
+      },
     },
-
-    /*{
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },*/
-
-    /*{
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },*/
-
-    /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
-
-    /* Test against branded browsers. */
-    // {
-    //   name: 'Microsoft Edge',
-    //   use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    // },
-    // {
-    //   name: 'Google Chrome',
-    //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    // },
+    {
+      name: 'interne',
+      testMatch: '**/BO_Interne/**',
+      testIgnore: ['**/Authentification/**', '**/BO-2625*', ...draftIgnore],
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: getInterneStorageStatePath(),
+      },
+    },
+    {
+      name: 'no-auth',
+      testMatch: ['**/Authentification/**', '**/BO-2625*', '**/Tools/**'],
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
   ],
-
-  /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start',
-  //   url: 'http://localhost:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });

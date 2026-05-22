@@ -1,15 +1,16 @@
 import { test as base, expect } from '@playwright/test';
+import { disconnectAllPG } from '@utils/PG_Utils/pg.config';
 
 export { expect };
 
-export const test = base.extend({
-  page: async ({ page, context }, use) => {
-    // 1. Bypass Content Security Policy (CSP) restrictions in tests
-    await context.setExtraHTTPHeaders({
-      'Content-Security-Policy': '',
-    });
+export const test = base.extend<{ _pgCleanup: void }>({
+  _pgCleanup: [async ({}, use) => {
+    await use();
+    await disconnectAllPG();
+  }, { auto: true }],
 
-    // 2. Add Cloudflare Access headers for API requests
+  page: async ({ page, context }, use) => {
+    // Add Cloudflare Access headers for API requests
     const cfClientId = process.env.CF_ACCESS_CLIENT_ID_PARTNERS;
     const cfClientSecret = process.env.CF_ACCESS_CLIENT_SECRET_PARTNERS;
 
@@ -20,25 +21,24 @@ export const test = base.extend({
       });
     }
 
-    // 3. Block Google Analytics and Google Tag Manager requests
-    await page.route('**/*', (route) => {
-      const url = route.request().url();
-      if (
-        url.includes('google-analytics.com') ||
-        url.includes('googletagmanager.com') ||
-        url.includes('analytics.google.com') ||
-        url.includes('/gtag/') ||
-        url.includes('/ga.js') ||
-        url.includes('/analytics.js') ||
-        url.includes('/gtm.js')
-      ) {
-        route.abort();
-      } else {
-        route.continue();
-      }
-    });
+    // Block Google Analytics and Google Tag Manager requests.
+    // Targeted patterns (instead of '**/*' with internal filter) so non-analytics requests
+    // bypass Playwright's network stack and benefit from Chromium's HTTP disk cache —
+    // critical to avoid re-downloading the 2.2M SPA bundle on KC redirect mid-test.
+    const blockedPatterns = [
+      '**/google-analytics.com/**',
+      '**/googletagmanager.com/**',
+      '**/analytics.google.com/**',
+      '**/gtag/**',
+      '**/ga.js',
+      '**/analytics.js',
+      '**/gtm.js',
+    ];
+    for (const pattern of blockedPatterns) {
+      await page.route(pattern, (route) => route.abort());
+    }
 
-    // 4. Add localStorage initialization for all pages in the context
+    // Add localStorage initialization for all pages in the context
     // This skips the tutorial modals by marking them as completed
     await context.addInitScript(() => {
       localStorage.setItem(

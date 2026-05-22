@@ -1,7 +1,7 @@
 {
   "drive_alim1": {
     "name": "testAutoBOAlim1",
-    "id": "14417",
+    "id": 14417,
     "phone": "+33606060606",
     "trade_type": "ALIMENTAIRE",
     "trade_name": "testAutoBOAlim"
@@ -9,7 +9,7 @@
 
   "drive_fleur1": {
     "name": "testAutoBOFleur1",
-    "id": "3516",
+    "id": 3516,
     "phone": "+33611193391",
     "trade_type": "FLEURISTE",
     "trade_name": "testAutoBOFleur"
@@ -17,7 +17,7 @@
 
   "drive_vin1": {
     "name": "testAutoBOVin1",
-    "id": "14455",
+    "id": 14455,
     "phone": "",
     "trade_type": "VINS",
     "trade_name": "testAutoBOVin"

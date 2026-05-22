@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test';
+import { isResponseValid } from '@utils/Helpers/apiResponse.helpers';
 
 export class InternalDeliveryDetails {
   readonly page: Page;
@@ -7,7 +8,7 @@ export class InternalDeliveryDetails {
   readonly elevatorOptions = ['yes', 'no', 'dontknow']; 
   
   // Order size options
-  readonly orderSizeOptions = ["XS - Sac à dos (0 pack)", "S - Sac cabas (1-2 packs)", "M - 1/2 chariot (3-8 packs)", "L - 1 chariot (9-15 packs)", "XL - 2 chariots (16-29 packs)", "XXL - +2 chariots (>\u00a029 packs)"];
+  readonly orderSizeOptions = ["XS - Sac à dos (0 pack)", "S - Sac cabas (1 pack)", "M - 1 Demi chariot (2-5 packs)", "L - 1 chariot (6-11 packs)", "XL - 2 chariots (12-22 packs)", "XXL - +2 chariots (> 22 packs)"];
 
   constructor(page: Page) {
     this.page = page;
@@ -51,7 +52,7 @@ export class InternalDeliveryDetails {
 
   // Distance value
   distanceValue() {
-    return this.page.locator(`//span[text()='Distance']/following::span[2]`);
+    return this.page.locator(`//span[text()='Distance']/following::span[1]`);
   }
 
   // Cotransporter block
@@ -59,7 +60,7 @@ export class InternalDeliveryDetails {
   // Fill and select CTP
   async fillAndSelectCTP(CTPName: string) {
     await this.page.locator(`//input[@id='search-shopper-delivery-detail-delivery']`).fill(CTPName);
-    await this.page.locator(`//span[./b[contains(text(), '${CTPName}')]]`).click();
+    await this.page.locator(`//div[@class='ant-select-item-option-content' and contains(., 'Test Auto')]`).click();
   }
 
   // Validation modal for adding CTP
@@ -93,28 +94,58 @@ export class InternalDeliveryDetails {
   }
 
   // Recipient block
+  // Base locator for delivery with validated status
   private readonly recipientBlock = `//span[text()='Destinataire']/ancestor::div[@class='ant-card-head']/following-sibling::div`;
-  // Firstname, lastname of recipient
+  
+  // Recipient firstname (delivery with ongoing status)
+  recipientFirstName() {
+    return this.page.locator(`//input[@id='recipientFirstName']`);
+  }
+  // Recipient lastname (delivery with ongoing status)
+  recipientLastName() {
+    return this.page.locator(`//input[@id='recipientLastName']`);
+  }
+  // Recipient firstname and lastname (delivery with validated status)
   recipientFirstAndLastName() {
     return this.page.locator(`${this.recipientBlock}/descendant::span[text()='Prénom, Nom']/following::span[1]`);
   }
 
-  // Recipient phone number
-  recipientPhoneNumber() {
+  // Recipient email (delivery with ongoing status)
+  recipientEmailOngoing() {
+    return this.page.locator(`//input[@id='recipientEmail']`);
+  }
+  // Check recipient no email (delivery with ongoing status)
+  recipientNoEmail() {
+    return this.page.locator(`//label[.//input[@id='recipientNoEmail']]`);
+  }
+  // Recipient email (delivery with validated status)
+  recipientEmailValidated() {
+    return this.page.locator(`${this.recipientBlock}/descendant::span[text()='E-mail']/following::span[1]`);
+  }
+  
+  // Recipient phone number (delivery with ongoing status)
+  recipientPhoneNumberOngoing() {
+    return this.page.locator(`//input[@id='recipient-phone-delivery-detail']`);
+  }
+  // Copy recipient phone number button (delivery with ongoing status)
+  copyRecipientPhoneNumberButtonOngoing() {
+    return this.page.locator(`//input[@id='recipient-phone-delivery-detail']/following::button[1]`);
+  }
+  // Recipient phone number (delivery with validated status)
+  recipientPhoneNumberValidated() {
     return this.page.locator(`${this.recipientBlock}/descendant::span[text()='Numéro de téléphone']/following::span[1]`);
   }
-  // Copy recipient phone number button
-  copyRecipientPhoneNumberButton() {
+  // Copy recipient phone number button (delivery with validated status)
+  copyRecipientPhoneNumberButtonValidated() {
     return this.page.locator(`${this.recipientBlock}/descendant::span[text()='Numéro de téléphone']/following::button[1]`);
   }
 
-  // Recipient email
-  recipientEmail() {
-    return this.page.locator(`${this.recipientBlock}/descendant::span[text()='E-mail']/following::span[1]`);
+  // Recipient profile link (delivery with ongoing status)
+  recipientProfileLinkOngoing() {
+    return this.page.locator(`//div[text()='Destinataire']/following::a[1]`);
   }
-
-  // Recipient profile link
-  recipientProfileLink() {
+  // Recipient profile link (delivery with validated status)
+  recipientProfileLinkValidated() {
     return this.page.locator(`//span[text()='Destinataire']/following::a[1]`);
   }
 
@@ -123,11 +154,50 @@ export class InternalDeliveryDetails {
   searchAddressLocator() {
     return this.page.locator(`//input[@id='address_name']/following::span[1]`);
   }
-   async fillAndSelectAddress(newAddress: string) {
-    await this.page.locator(`//input[@id='address_name']`).fill(newAddress);
-    await this.page.locator(`//div[contains(@title,'${newAddress}')]`).click();
-    // Wait until the dropdown closes (the options are no longer visible)
-    await expect(this.page.locator(`//div[contains(@title,'${newAddress}')]`)).toBeHidden();
+  // Address input and selection — validates both autocomplete and distance APIs, waits for distance UI, with retry on failure.
+  // pressSequentially (vs fill) emits native keyboard events so React onChange fires per char and Ant useDebounce (400ms) reliably
+  // re-triggers /autocomplete on retry. The preceding click() puts Ant Select in search mode (previous value greyed out as
+  // placeholder, search input empty) so the new typing does not concatenate with the previous attempt's value.
+  async fillAndSelectAddress(newAddress: string) {
+    // Click the ant-select-selector parent (input's first ancestor div) to reliably activate Ant search mode and focus the input.
+    // On retry, click the Ant × button to trigger the onClear handler → resets React state (searchTerm) so next pressSequentially
+    // fires a fresh /autocomplete call. (Playwright's native clear() empties the input visually but Ant's internal searchTerm stays,
+    // so no new API call.)
+    const addressSelector = this.page.locator(`//input[@id='address_name']/ancestor::div[1]`);
+    const addressInput = this.page.locator(`//input[@id='address_name']`);
+    const addressClearButton = this.page.locator(`//input[@id='address_name']/ancestor::div[@class='ant-select-selector']/following-sibling::span[@class='ant-select-clear']`);
+    const resultOption = this.page.locator(`//div[contains(@title,'${newAddress}')]`);
+    const maxRetries = 2;
+
+    // Scroll input into view to prevent option click from overlapping the save button (flaky)
+    await addressSelector.evaluate(el => el.scrollIntoView({ block: 'center' }));
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      await addressSelector.click();
+      if (attempt > 0) await addressClearButton.click();
+
+      const autocompleteResponse = this.page.waitForResponse(
+        (res) => res.url().includes('/addresses/autocomplete'),
+        { timeout: 10000 }
+      ).catch(() => null);
+
+      const distanceResponse = this.page.waitForResponse(
+        (res) => res.url().includes('/addresses/distance'),
+        { timeout: 10000 }
+      ).catch(() => null);
+
+      await addressInput.pressSequentially(newAddress, { delay: 30 });
+      if (!(await isResponseValid(await autocompleteResponse))) continue;
+
+      await resultOption.click();
+      if (!(await isResponseValid(await distanceResponse))) continue;
+
+      // API OK → wait for distance UI to render before returning (prevents save/UI race)
+      await this.waitForDistanceLoading();
+      return;
+    }
+
+    throw new Error(`Autocomplete or Distance API did not return expected status after ${maxRetries + 1} attempts`);
   }
 
   // Original address
@@ -157,13 +227,20 @@ export class InternalDeliveryDetails {
     await this.page.locator(`//label[@for='address_floor']/following::span[@aria-label='up'][1]`).click();
   }
 
+  // Delivery distance XPath
+  private readonly deliveryDistanceXPath = `//span[contains(text(),'Distance de la livraison')]`;
+
   // Delivery distance
   deliveryDistance() {
-    return this.page.locator(`//div[contains(@class,'ant-flex css')]/span[contains(@class,'ant-typography css')]`);
+    return this.page.locator(this.deliveryDistanceXPath);
   }
   // Wait for distance loading
   async waitForDistanceLoading() {
-    await expect(this.deliveryDistance()).toContainText('km');
+    await expect(this.deliveryDistance()).toContainText(/\d\s*km/);
+  }
+  // Delivery distance error message
+  deliveryDistanceErrorMessage() {
+    return this.page.locator(`${this.deliveryDistanceXPath}/following-sibling::span`);
   }
 
   // Delivery address details
@@ -177,9 +254,36 @@ export class InternalDeliveryDetails {
   inputPickupPoint() {
     return this.page.locator(`//input[@id='search-drive-delivery-detail-delivery']`);
   }
+
+  // Pickup point selection — validates distance API, waits for distance UI, with retry on failure (no Google autocomplete here)
   async fillAndSelectPickupPoint(pickupPointName: string) {
-    await this.inputPickupPoint().fill(pickupPointName);
-    await this.page.locator(`//span[contains(text(), '${pickupPointName}')]`).click();
+    const inputPickupPoint = this.inputPickupPoint();
+    const resultOption = this.page.locator(`//b[contains(text(),'${pickupPointName}')]/ancestor::div[@class='ant-select-item-option-content']`);
+    const maxRetries = 2;
+
+    // Scroll input into view to prevent option click from overlapping the save button (flaky)
+    await inputPickupPoint.evaluate(el => el.scrollIntoView({ block: 'center' }));
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Clear only if search input has leftover value (previous attempt)
+      if (await inputPickupPoint.inputValue()) await inputPickupPoint.clear();
+
+      const distanceResponse = this.page.waitForResponse(
+        (res) => res.url().includes('/addresses/distance'),
+        { timeout: 10000 }
+      ).catch(() => null);
+
+      await inputPickupPoint.fill(pickupPointName);
+      await resultOption.click();
+
+      if (!(await isResponseValid(await distanceResponse))) continue;
+
+      // API OK → wait for distance UI to render before returning (prevents save/UI race)
+      await this.waitForDistanceLoading();
+      return;
+    }
+
+    throw new Error(`Distance API did not return 2xx/304 after ${maxRetries + 1} attempts`);
   }
 
   // Pickup point phone number

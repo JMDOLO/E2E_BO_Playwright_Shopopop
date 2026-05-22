@@ -4,7 +4,6 @@ import { InternalHomePageMenu } from '@pages/BO_Interne/InternalHomePageMenu';
 import { ProHomePageMenu } from '@pages/BO_Pro/ProHomePage';
 import { createDeliveryForInternal, createDeliveryForPro } from '@utils/Helpers/createDelivery.helpers';
 import { createDeliveryAPI, buildAndGotoDeliveryURL } from '@utils/Helpers/createDeliveryAPI.helpers';
-import { getCurrentAccountIndex } from '@utils/Helpers/authentication.helpers';
 import * as drives from '@testdata/drives.json';
 import * as users from '@testdata/users.json';
 import * as url from '@testdata/url.app.json';
@@ -31,10 +30,8 @@ test.describe(`BO-2625 - Mise en ligne de livraison  @S2f10413c`, () => {
     // Authentication BO Interne (manual, not auto-authenticated)
     await loginPage.authenticateInternalWithEnv();
 
-    // Get the current account index for this shard (1-20)
-    const accountIndex = getCurrentAccountIndex();
-    // Build expected creator name based on account index (e.g., "Qa Interne5")
-    const expectedCreator = `Qa Interne${accountIndex}`;
+    // Expected creator name from users.json (e.g., "QA Interne1")
+    const expectedCreator = `${users.user_interne.firstname} ${users.user_interne.lastname}`;
 
     // Access delivery creation page
     const menu = new InternalHomePageMenu(page);
@@ -88,7 +85,7 @@ test.describe(`BO-2625 - Mise en ligne de livraison  @S2f10413c`, () => {
     await loginPage.authenticateInternalWithEnv();
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Click history tab and check delivery creation message
     await checkHistoryMessage(drives.drive_alim1.name, 'API_PARTNER');

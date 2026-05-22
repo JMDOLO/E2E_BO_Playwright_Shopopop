@@ -51,7 +51,7 @@ export class SearchUsers {
 
   // All User Type Results Locator
   allUserTypeResults() {
-    return this.page.locator(`//td[contains(@class,'ant-table-row-expand-icon-cell')]/following-sibling::td[4]`);
+    return this.page.locator(`//td[contains(@class,'ant-table-row-expand-icon-cell')]/following-sibling::td[4]/span[1]`);
   }
 
   // "Voir le profil" link on the row matching a given email

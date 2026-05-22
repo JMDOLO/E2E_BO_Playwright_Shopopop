@@ -13,7 +13,7 @@ on:
         default: 'Playwright Automation'
         type: string
   schedule:
-    # - cron: '45 11 * * 1-5'
+    - cron: '45 11 * * 1-5'
 jobs:
   # Job 1: Launch Testomat.io run (only for scheduled runs or manual with checkbox)
   launch-testomat-run:
@@ -32,7 +32,7 @@ jobs:
           node-version: lts/*
 
       - name: Cache node modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: npm-cache
         with:
           path: E2E_BO/node_modules
@@ -47,26 +47,171 @@ jobs:
       - name: Launch Testomat.io run
         id: launch-run
         run: |
-          OUTPUT=$(TESTOMATIO=${{ secrets.TESTOMATIO_BO }} TESTOMATIO_ENV='QA3' TESTOMATIO_TITLE="${{ inputs.testomat_title || 'Playwright Automation' }}" npx @testomatio/reporter start)
+          set +e
+          OUTPUT=$(TESTOMATIO=${{ secrets.TESTOMATIO_BO }} TESTOMATIO_ENV='QA3' TESTOMATIO_TITLE="${{ inputs.testomat_title || 'Playwright Automation' }}" npx @testomatio/reporter start 2>&1)
+          EXIT_CODE=$?
+          set -e
           echo "$OUTPUT"
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::error::Testomat reporter start failed with exit code $EXIT_CODE"
+            exit 1
+          fi
           RUN_ID=$(echo "$OUTPUT" | tail -1)
-          if [ -z "$RUN_ID" ]; then
-            echo "Error: Failed to get RUN_ID from start command"
+          if [ -z "$RUN_ID" ] || echo "$RUN_ID" | grep -qi "error\|bug\|issue\|failed"; then
+            echo "::error::Invalid RUN_ID extracted: $RUN_ID"
             exit 1
           fi
           echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
           echo "Extracted RUN_ID: $RUN_ID"
 
-  test:
+  # Job 2a: Setup Pro authentication (20 accounts in parallel matrix, each on its own runner/IP)
+  setup-auth-pro:
     needs: [launch-testomat-run]
-    if: always()
-    timeout-minutes: 60
+    if: ${{ !failure() }}
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
-        shardTotal: [60]
+        accountIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    defaults:
+      run:
+        working-directory: E2E_BO
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: E2E_BO/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('E2E_BO/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('E2E_BO/package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Authenticate BO Pro pro${{ matrix.accountIndex }}
+        run: npx playwright test --grep "NEVER_MATCH_ANYTHING" || true
+        env:
+          AUTH_SETUP_ONLY: 'pro'
+          AUTH_ACCOUNT_INDEX: ${{ matrix.accountIndex }}
+          PASSWORDBO: ${{ secrets.PASSWORDBO }}
+          CF_ACCESS_CLIENT_ID_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_ID_PARTNERS }}
+          CF_ACCESS_CLIENT_SECRET_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_SECRET_PARTNERS }}
+
+      - name: Verify auth file exists
+        run: |
+          ls -la .auth/
+          test -f .auth/pro_${{ matrix.accountIndex }}.json
+
+      - name: Upload Pro auth artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-pro-${{ matrix.accountIndex }}
+          path: E2E_BO/.auth/pro_${{ matrix.accountIndex }}.json
+          include-hidden-files: true
+          retention-days: 1
+
+  # Job 2b: Setup Interne authentication (20 accounts in parallel matrix, each on its own runner/IP)
+  setup-auth-interne:
+    needs: [launch-testomat-run]
+    if: ${{ !failure() }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        accountIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    defaults:
+      run:
+        working-directory: E2E_BO
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: E2E_BO/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('E2E_BO/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('E2E_BO/package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Authenticate BO Interne int${{ matrix.accountIndex }}
+        run: npx playwright test --grep "NEVER_MATCH_ANYTHING" || true
+        env:
+          AUTH_SETUP_ONLY: 'interne'
+          AUTH_ACCOUNT_INDEX: ${{ matrix.accountIndex }}
+          PASSWORDBO: ${{ secrets.PASSWORDBO }}
+          CF_ACCESS_CLIENT_ID_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_ID_PARTNERS }}
+          CF_ACCESS_CLIENT_SECRET_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_SECRET_PARTNERS }}
+
+      - name: Verify auth file exists
+        run: |
+          ls -la .auth/
+          test -f .auth/interne_${{ matrix.accountIndex }}.json
+
+      - name: Upload Interne auth artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-interne-${{ matrix.accountIndex }}
+          path: E2E_BO/.auth/interne_${{ matrix.accountIndex }}.json
+          include-hidden-files: true
+          retention-days: 1
+
+  test:
+    needs: [launch-testomat-run, setup-auth-pro, setup-auth-interne]
+    if: ${{ !failure() }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+        shardTotal: [55]
     defaults:
       run:
         working-directory: E2E_BO
@@ -76,9 +221,92 @@ jobs:
       with:
         node-version: lts/*
 
+    # Compute account index: Shard 1→1, Shard 20→20, Shard 21→1, etc.
+    - name: Compute account index
+      id: account
+      run: echo "index=$(( (${{ matrix.shardIndex }} - 1) % 20 + 1 ))" >> $GITHUB_OUTPUT
+
+    # Download auth artifacts with fallback: if the assigned account's artifact is missing
+    # (setup-auth failed for that account), try other accounts as fallback and copy the file
+    # under the expected name so the shard can use it transparently.
+    - name: Download Pro auth artifact (account ${{ steps.account.outputs.index }})
+      id: download-pro
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      with:
+        name: auth-pro-${{ steps.account.outputs.index }}
+        path: E2E_BO/.auth/
+
+    - name: Fallback Pro auth artifact
+      if: steps.download-pro.outcome == 'failure'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: auth-pro-*
+        path: E2E_BO/.auth-fallback/
+        merge-multiple: false
+
+    - name: Copy fallback Pro auth file
+      if: steps.download-pro.outcome == 'failure'
+      run: |
+        FALLBACKS=($(find E2E_BO/.auth-fallback -name 'pro_*.json'))
+        if [ ${#FALLBACKS[@]} -eq 0 ]; then
+          echo "::error::No Pro auth artifact available as fallback"
+          exit 1
+        fi
+        FALLBACK=${FALLBACKS[$RANDOM % ${#FALLBACKS[@]}]}
+        mkdir -p E2E_BO/.auth
+        cp "$FALLBACK" "E2E_BO/.auth/pro_${{ steps.account.outputs.index }}.json"
+        echo "⚠️ Using fallback Pro auth: $(basename $FALLBACK) → pro_${{ steps.account.outputs.index }}.json"
+
+    - name: Download Interne auth artifact (account ${{ steps.account.outputs.index }})
+      id: download-interne
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      with:
+        name: auth-interne-${{ steps.account.outputs.index }}
+        path: E2E_BO/.auth/
+
+    - name: Fallback Interne auth artifact
+      if: steps.download-interne.outcome == 'failure'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: auth-interne-*
+        path: E2E_BO/.auth-fallback/
+        merge-multiple: false
+
+    - name: Copy fallback Interne auth file
+      if: steps.download-interne.outcome == 'failure'
+      run: |
+        FALLBACKS=($(find E2E_BO/.auth-fallback -name 'interne_*.json'))
+        if [ ${#FALLBACKS[@]} -eq 0 ]; then
+          echo "::error::No Interne auth artifact available as fallback"
+          exit 1
+        fi
+        FALLBACK=${FALLBACKS[$RANDOM % ${#FALLBACKS[@]}]}
+        mkdir -p E2E_BO/.auth
+        cp "$FALLBACK" "E2E_BO/.auth/interne_${{ steps.account.outputs.index }}.json"
+        echo "⚠️ Using fallback Interne auth: $(basename $FALLBACK) → interne_${{ steps.account.outputs.index }}.json"
+
+    # Download full auth pool for the mid-test Keycloak fallback (OPS-1948).
+    # The kcFallback singleton reads .auth-pool/ and picks random candidates
+    # to swap cookies when KC disconnects the session mid-test.
+    - name: Download Pro auth pool
+      uses: actions/download-artifact@v4
+      with:
+        pattern: auth-pro-*
+        path: E2E_BO/.auth-pool/
+        merge-multiple: true
+
+    - name: Download Interne auth pool
+      uses: actions/download-artifact@v4
+      with:
+        pattern: auth-interne-*
+        path: E2E_BO/.auth-pool/
+        merge-multiple: true
+
     # Cache npm dependencies
     - name: Cache node modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       id: npm-cache
       with:
         path: E2E_BO/node_modules
@@ -88,7 +316,7 @@ jobs:
 
     # Cache Playwright browsers (key tied to package-lock.json to auto-invalidate on Playwright updates)
     - name: Cache Playwright browsers
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       id: playwright-cache
       with:
         path: ~/.cache/ms-playwright
@@ -110,58 +338,13 @@ jobs:
     - name: Run E2E_BO Playwright tests (Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
       run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       env:
+        # Shard index for rotating Interne KC accounts (int1..int10)
+        PLAYWRIGHT_SHARD_INDEX: ${{ matrix.shardIndex }}
+
         # Environment flag
         STAGING: ${{ secrets.STAGING }}
 
-        # Shard index for account rotation (passed to Playwright)
-        PLAYWRIGHT_SHARD_INDEX: ${{ matrix.shardIndex }}
-
-        # Authentication credentials - 20 rotating accounts per type
-        # BO Pro accounts (qa-team+pro1@example.com to qa-team+pro20@example.com)
-        LOGINBOPRO_1: 'qa-team+pro1@example.com'
-        LOGINBOPRO_2: 'qa-team+pro2@example.com'
-        LOGINBOPRO_3: 'qa-team+pro3@example.com'
-        LOGINBOPRO_4: 'qa-team+pro4@example.com'
-        LOGINBOPRO_5: 'qa-team+pro5@example.com'
-        LOGINBOPRO_6: 'qa-team+pro6@example.com'
-        LOGINBOPRO_7: 'qa-team+pro7@example.com'
-        LOGINBOPRO_8: 'qa-team+pro8@example.com'
-        LOGINBOPRO_9: 'qa-team+pro9@example.com'
-        LOGINBOPRO_10: 'qa-team+pro10@example.com'
-        LOGINBOPRO_11: 'qa-team+pro11@example.com'
-        LOGINBOPRO_12: 'qa-team+pro12@example.com'
-        LOGINBOPRO_13: 'qa-team+pro13@example.com'
-        LOGINBOPRO_14: 'qa-team+pro14@example.com'
-        LOGINBOPRO_15: 'qa-team+pro15@example.com'
-        LOGINBOPRO_16: 'qa-team+pro16@example.com'
-        LOGINBOPRO_17: 'qa-team+pro17@example.com'
-        LOGINBOPRO_18: 'qa-team+pro18@example.com'
-        LOGINBOPRO_19: 'qa-team+pro19@example.com'
-        LOGINBOPRO_20: 'qa-team+pro20@example.com'
-
-        # BO Interne accounts (qa-team+int1@example.com to qa-team+int20@example.com)
-        LOGINBOINT_1: 'qa-team+int1@example.com'
-        LOGINBOINT_2: 'qa-team+int2@example.com'
-        LOGINBOINT_3: 'qa-team+int3@example.com'
-        LOGINBOINT_4: 'qa-team+int4@example.com'
-        LOGINBOINT_5: 'qa-team+int5@example.com'
-        LOGINBOINT_6: 'qa-team+int6@example.com'
-        LOGINBOINT_7: 'qa-team+int7@example.com'
-        LOGINBOINT_8: 'qa-team+int8@example.com'
-        LOGINBOINT_9: 'qa-team+int9@example.com'
-        LOGINBOINT_10: 'qa-team+int10@example.com'
-        LOGINBOINT_11: 'qa-team+int11@example.com'
-        LOGINBOINT_12: 'qa-team+int12@example.com'
-        LOGINBOINT_13: 'qa-team+int13@example.com'
-        LOGINBOINT_14: 'qa-team+int14@example.com'
-        LOGINBOINT_15: 'qa-team+int15@example.com'
-        LOGINBOINT_16: 'qa-team+int16@example.com'
-        LOGINBOINT_17: 'qa-team+int17@example.com'
-        LOGINBOINT_18: 'qa-team+int18@example.com'
-        LOGINBOINT_19: 'qa-team+int19@example.com'
-        LOGINBOINT_20: 'qa-team+int20@example.com'
-
-        # Shared password for all accounts
+        # Authentication - only password needed (emails from users.json)
         PASSWORDBO: ${{ secrets.PASSWORDBO }}
 
         # API Authentication - GenericV2 API
@@ -172,12 +355,24 @@ jobs:
         CF_ACCESS_CLIENT_ID_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_ID_PARTNERS }}
         CF_ACCESS_CLIENT_SECRET_PARTNERS: ${{ secrets.CF_ACCESS_CLIENT_SECRET_PARTNERS }}
 
-        # MySQL Database Connection
+        # MySQL Database Connection (QA3)
         DB_HOST_QA3: ${{ secrets.DB_HOST_QA3 }}
         DB_DATABASE_QA3: ${{ secrets.DB_DATABASE_QA3 }}
         DB_USER_QA3: ${{ secrets.DB_USER_QA3 }}
         DB_PASSWORD_QA3: ${{ secrets.DB_PASSWORD_QA3 }}
         DB_PORT_QA3: ${{ secrets.DB_PORT_QA3 }}
+
+        # MySQL Database Connection (QA2 - used by BO-3581 unit transfer test)
+        DB_HOST_QA2: ${{ secrets.DB_HOST_QA2 }}
+        DB_DATABASE_QA2: ${{ secrets.DB_DATABASE_QA2 }}
+        DB_USER_QA2: ${{ secrets.DB_USER_QA2 }}
+        DB_PASSWORD_QA2: ${{ secrets.DB_PASSWORD_QA2 }}
+        DB_PORT_QA2: ${{ secrets.DB_PORT_QA2 }}
+
+        # PostgreSQL Connection (QA3 via SSH tunnel - host/port hardcoded in pg.config.ts)
+        POSTGRES_ENGINEERING_USER: ${{ secrets.POSTGRES_ENGINEERING_USER }}
+        POSTGRES_ENGINEERING_PASSWORD: ${{ secrets.POSTGRES_ENGINEERING_PASSWORD }}
+        SSH_BASTION_KEY: ${{ secrets.SSH_BASTION_KEY }}
 
         # Elasticsearch (QA3 dedicated cluster on Clever Cloud)
         ES_HOST_QA3: ${{ secrets.ES_HOST_QA3 }}
@@ -220,7 +415,7 @@ jobs:
         echo "npm-hash=${{ hashFiles('E2E_BO/package-lock.json') }}" >> $GITHUB_OUTPUT
 
     - name: Cache node modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       id: npm-cache-merge
       with:
         path: E2E_BO/node_modules
@@ -234,7 +429,7 @@ jobs:
       run: npm ci
 
     - name: Download all shard reports
-      uses: actions/download-artifact@v5
+      uses: actions/download-artifact@v4
       with:
         pattern: blob-report-*
         path: E2E_BO/all-blob-reports
@@ -265,9 +460,9 @@ jobs:
         path: E2E_BO/playwright-report/
         retention-days: 1
 
-  # Job 4: Finish Testomat.io run (only for scheduled runs or manual with checkbox)
+  # Job 5: Finish Testomat.io run (only for scheduled runs or manual with checkbox)
   finish-testomat-run:
-    if: (!cancelled()) && (github.event_name == 'schedule' || inputs.testomat_report == true)
+    if: ${{ !cancelled() && needs.launch-testomat-run.result == 'success' && (github.event_name == 'schedule' || inputs.testomat_report == true) }}
     needs: [launch-testomat-run, test, merge-reports]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -281,7 +476,7 @@ jobs:
           node-version: lts/*
 
       - name: Cache node modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: npm-cache
         with:
           path: E2E_BO/node_modules

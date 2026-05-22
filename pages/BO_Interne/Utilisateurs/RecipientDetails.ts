@@ -10,5 +10,6 @@ export class RecipientDetails {
   // All "Détails de la livraison" links in the page
   deliveryLink(deliveryId: number) {
     return this.page.locator(`//a[@href="/delivery/${deliveryId}"]`);
+    //return this.page.locator(`//a[@href="/detail/${deliveryId}"]`); // New version of the delivery detail page
   }
 }

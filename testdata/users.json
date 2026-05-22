@@ -42,26 +42,27 @@
     "id": 36,
     "name": "Test Auto",
     "phone": "+33612345678",
-    "email": "testauto@shopopop.com"
+    "email": "testauto@shopopop.com",
+    "account_id_qa3": "b91d40d7-28f6-4c75-a2a3-436a06ef6383"
   },
 
   "//": "Users BO -> table users, page /users/${users.id}",
-  "user_pro": {
-    "firstname": "Qa",
-    "lastname": "Pro",
-    "email": "qa-team+pro@shopopop.com",
-    "phone": "+33612345678",
-    "birth_date": "1981-11-26",
-    "id": 515753
-  },
-
   "user_interne": {
     "firstname": "Qa",
-    "lastname": "Interne",
-    "email": "qa-team+int@shopopop.com",
+    "lastname": "Interne1",
+    "email": "qa-team+int1@example.com",
     "phone": "+33612345678",
     "birth_date": "1981-11-26",
-    "id": 532021
+    "id": 539527961
+  },
+
+  "user_pro": {
+    "firstname": "Qa",
+    "lastname": "Pro1",
+    "email": "qa-team+pro1@example.com",
+    "phone": "+33612345678",
+    "birth_date": "1981-11-26",
+    "id": 539526715
   },
 
   "user_pro1": {

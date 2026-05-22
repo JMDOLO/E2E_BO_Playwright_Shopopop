@@ -4,7 +4,7 @@ import { getRandomWithIndex } from '@utils/Helpers/random.helpers';
 /**
  * UI transport mode labels (source of truth for POM and tests)
  */
-export const TRANSPORT_OPTIONS_UI = ['Piéton', 'Vélo', 'Voiture'] as const; // Rajouter 'Camionnette' après fix BO-3807
+export const TRANSPORT_OPTIONS_UI = ['Piéton', 'Vélo', 'Voiture', 'Camionnette'] as const;
 
 /**
  * Mapping partners API transport mode → UI label
@@ -20,16 +20,20 @@ export const TRANSPORT_OPTIONS_API: Record<string, string> = {
 };
 
 /**
- * Generate order information data using Faker
+ * Generate fresh random order information for each call.
+ * Must be called per-test (not module-level) so each delivery has unique data —
+ * crucial for the `reference` field which is rate-limited by bo-api (1 call / 30s per reference).
  */
-export const orderInformation = {
-  reference: faker.string.alphanumeric({ length: 8, casing: 'upper' }),
-  amount: faker.string.numeric({ length: 3, allowLeadingZeros: false }),
-  size: getRandomWithIndex(['XS', 'S', 'M', 'L', 'XL', 'XXL']).value,
-  additionalInfos: faker.string.alphanumeric(25),
-  minimalTransportModeAPI: getRandomWithIndex(['TRANSPORT_1', 'TRANSPORT_2', 'TRANSPORT_3', 'TRANSPORT_4', 'TRANSPORT_5', 'TRANSPORT_6']).value,
-  minimalTransportModeUI: getRandomWithIndex([...TRANSPORT_OPTIONS_UI]).value,
-};
+export function generateOrderInformation() {
+  return {
+    reference: faker.string.alphanumeric({ length: 8, casing: 'upper' }),
+    amount: faker.string.numeric({ length: 3, allowLeadingZeros: false }),
+    size: getRandomWithIndex(['XS', 'S', 'M', 'L', 'XL', 'XXL']).value,
+    additionalInfos: faker.string.alphanumeric(25),
+    minimalTransportModeAPI: getRandomWithIndex(['TRANSPORT_1', 'TRANSPORT_2', 'TRANSPORT_3', 'TRANSPORT_4', 'TRANSPORT_5', 'TRANSPORT_6']).value,
+    minimalTransportModeUI: getRandomWithIndex([...TRANSPORT_OPTIONS_UI]).value,
+  };
+}
 
 /**
  * Default values for delivery creation via API

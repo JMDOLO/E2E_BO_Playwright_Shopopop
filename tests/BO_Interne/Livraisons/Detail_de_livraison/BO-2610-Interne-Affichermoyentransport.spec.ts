@@ -5,7 +5,7 @@ import { createDeliveryForInternal } from '@utils/Helpers/createDelivery.helpers
 import * as users from '@testdata/users.json';
 import * as drives from '@testdata/drives.json';
 import { InternalDeliveryDetails } from '@pages/BO_Interne/Livraisons/Liste_des_livraisons/Detail_de_livraison/InternalDeliveryDetails';
-import { orderInformation, TRANSPORT_OPTIONS_API, TRANSPORT_OPTIONS_UI } from '@testdata/order_information';
+import { generateOrderInformation, TRANSPORT_OPTIONS_API, TRANSPORT_OPTIONS_UI } from '@testdata/order_information';
 import { getRandomWithIndex } from '@utils/Helpers/random.helpers';
 
 // TODO: Remplacer les placeholders du mapping TRANSPORT_OPTIONS_API une fois définis par partners API
@@ -19,11 +19,13 @@ test.describe(`BO-2610 - Connaitre le moyen de transport minimum @S387b5804`, ()
   });
 
   test(`Afficher le moyen de transport minimum recommandé - API @T0d283792`, async ({ page }) => {
+    const orderInfo = generateOrderInformation();
+
     // Create a delivery with a random transport mode via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI(drives.drive_alim1, users.recipient_interne, { minimalTransportModeAPI: orderInformation.minimalTransportModeAPI }));
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI({ orderInfo: { minimalTransportModeAPI: orderInfo.minimalTransportModeAPI } })).id);
 
     // Check that the transport value in UI is the one sent by API
-    await expect(deliveryDetails.transportValue()).toHaveText(TRANSPORT_OPTIONS_API[orderInformation.minimalTransportModeAPI]);
+    await expect(deliveryDetails.transportValue()).toHaveText(TRANSPORT_OPTIONS_API[orderInfo.minimalTransportModeAPI]);
   });
 
   test(`Afficher le moyen de transport minimum recommandé - UI @T3e6901e6`, async ({ page }) => {

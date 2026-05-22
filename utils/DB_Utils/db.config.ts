@@ -1,9 +1,4 @@
-import dotenv from 'dotenv';
-import path from 'path';
 import mysql from 'mysql2/promise';
-
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 /**
  * Database configuration interface
@@ -54,6 +49,7 @@ export function getDBPool(): mysql.Pool {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
+      connectTimeout: 30000,
     });
   }
   return pool;
@@ -67,5 +63,24 @@ export async function closeDBPool(): Promise<void> {
   if (pool) {
     await pool.end();
     pool = null;
+  }
+}
+
+/**
+ * Check if the DB pool is still alive, refresh it if stale
+ * Connections can become stale when idle during test execution
+ * (cut by network proxies, firewalls, or NAT gateways)
+ */
+export async function ensureDBConnection(): Promise<void> {
+  const currentPool = getDBPool();
+
+  try {
+    await currentPool.query('SELECT 1');
+  } catch {
+    console.log('⚠️  DB connection stale, refreshing pool...');
+    await currentPool.end().catch(() => {});
+    pool = null;
+    getDBPool();
+    console.log('✅ DB pool refreshed');
   }
 }

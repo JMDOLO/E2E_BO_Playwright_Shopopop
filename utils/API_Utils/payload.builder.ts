@@ -11,7 +11,7 @@ import { deliveryDefaults } from '@testdata/order_information';
  */
 export interface Drive {
   name: string;
-  id: string;
+  id: number;
   trade_type: string;
   trade_name: string;
 }
@@ -112,7 +112,7 @@ function getTomorrowDropoffWindow() {
  * ```
  */
 export function buildDeliveryPayload(
-  drive: Drive, // eslint-disable-line @typescript-eslint/no-unused-vars
+  drive: Drive,
   recipient: Recipient,
   orderInfo: OrderInfo = {}
 ): GenericV2DeliveryPayload {

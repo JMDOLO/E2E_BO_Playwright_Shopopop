@@ -33,17 +33,21 @@ export class ChangeDelivery {
   readonly deliveryDayInText = ["Aujourd'hui", "Après-demain"];
   async clickDeliveryDayInText(dayInText: string) {
     await this.page.locator(`//div[@title="${dayInText}"]`).click();
+    //await this.page.locator(`//span[@class='ant-radio-button-label']//span[text()="${dayInText}"]`).click();
   }
 
   // Select delivery date in calendar
   // Click access calendar
   async accessCalendar() {
     await this.page.locator(`//input[@id='deliveryDayPicker']`).click();
+    //await this.page.locator(`//input[@data-testid='DateSelector-DeliveryTimeForm-otherDate']`).click();
   }
   // Initial delivery date (pick in calendar in ISO format "YYYY-MM-DD")
-  initialISODeliveryDateInCalendar() {
+  initialISODeliveryDateInCalendar() { // A supprimer avec le nouveau détail de livraison
     return this.page.locator(`//td[contains(@class, 'ant-picker-cell-selected')]`);
   }
+  // Initial delivery date (pick in calendar in FR format "DD-MM-YYYY")
+  //const initialDeliveryDate = await this.accessCalendar().getAttribute('value'); Dans le test BACK-4613 (ligne 92)
   
   // Select day (the second day after tomorrow) in calendar
   // An API delivery is created for "tomorrow".
@@ -57,6 +61,7 @@ export class ChangeDelivery {
   // delivery start time global
   deliveryStartTimeGlobal() {
     return this.page.locator(`//input[@id='hourStart']`);
+    //return this.page.locator(`//input[@data-testid='TimePicker-DeliveryTimeForm-startDate']`);
   }
   // delivery start time hour
   async clickDeliveryStartTimeHour(startHour: string) {
@@ -69,7 +74,7 @@ export class ChangeDelivery {
 
   // Tips value input field
   tipsValueInputField() {
-    return this.page.locator(`//input[@id='tips-update-delivery-detail-delivery']`);
+    return this.page.locator(`//input[@id='tips']`);
   }
   
   // Increase tips button
@@ -88,5 +93,6 @@ export class ChangeDelivery {
   // Push radio button label
   checkPush() {
     return this.page.locator(`//input[@id='push']/ancestor::label`);
+    //return this.page.locator(`//input[@name='triggerPushNotification']/ancestor::label`);
   }
 };

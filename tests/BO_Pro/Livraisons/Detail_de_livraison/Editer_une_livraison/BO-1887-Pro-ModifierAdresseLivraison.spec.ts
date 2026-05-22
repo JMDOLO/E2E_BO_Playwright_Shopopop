@@ -11,7 +11,7 @@ test.describe(`BO-1887 - Modifier l'adresse de livraison @S895ace1c`, () => {
   test.beforeEach(async ({ page }) => {
     deliveryAddress = new ProDeliveryDetails(page);
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Edit delivery address
     // Click on edit order contents button

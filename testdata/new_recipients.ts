@@ -2,52 +2,42 @@ import * as users from '@testdata/users.json';
 import { faker } from '@faker-js/faker/locale/fr';
 
 /**
- * Generate new recipient data using Faker with unique identifiers
- *
- * IMPORTANT: firstname and lastname are randomly generated to ensure uniqueness
- * across test campaigns. The "Pro" or "Interne" suffix maintains visual coherence
- * and allows quick identification of the application origin.
+ * Generate a valid French mobile phone number in +33 format
+ * Excludes invalid 06XX combinations per French numbering plan
  */
-export const newRecipientPro = {
-  ...users.recipient_pro,
-  firstname: faker.person.firstName(),
-  lastname: faker.person.lastName() + 'Pro',
-  get email(): string {
-    return faker.internet.exampleEmail({
-      firstName: this.firstname,
-      lastName: this.lastname
-    });
-  }
+export function generateFrenchPhone(): string {
+  const excludedNumbers = ['39', '90', '91', '92', '93', '94', '96', '97'];
+  let combination: string;
+
+  do {
+    combination = faker.string.numeric(1) + faker.string.numeric(1);
+  } while (excludedNumbers.includes(combination));
+
+  // 06 only: all 06XX ranges are allocated (ARCEP). 07 has unallocated ranges rejected by libphonenumber-js
+  return '+336' + combination + faker.string.numeric(6);
 }
 
-export const newRecipientInterne = {
-  ...users.recipient_interne,
-  firstname: faker.person.firstName(),
-  lastname: faker.person.lastName() + 'Interne',
-  get email(): string {
-    return faker.internet.exampleEmail({
-      firstName: this.firstname,
-      lastName: this.lastname
-    });
-  }
+/**
+ * New recipient with Faker-generated identity and valid French phone
+ *
+ * - firstname, lastname, email, phone: unique per test run (Faker)
+ * - address, street, zipCode, city, type: inherited from recipient_interne (within 40km of drives)
+ * - isElevator, floorNumber, addressAdditionalInfo: random but valid values
+ *
+ * Used as default recipient in createDeliveryAPI() to ensure test isolation
+ * (each test creates its own recipient, no shared state)
+ */
+export function newRecipient() {
+  const firstname = faker.person.firstName();
+  const lastname = faker.person.lastName();
+  return {
+    ...users.recipient_interne,
+    firstname,
+    lastname,
+    phone: generateFrenchPhone(),
+    email: faker.internet.exampleEmail({ firstName: firstname, lastName: lastname }),
+    isElevator: faker.helpers.arrayElement(["yes", "no", "dontknow"] as const),
+    floorNumber: faker.string.numeric(1),
+    addressAdditionalInfo: faker.location.secondaryAddress()
+  };
 }
-
-export const newRecipient = {
-  phone: (() => {
-    const excludedNumbers = ['39', '90', '91', '92', '93', '94', '96', '97',];
-    let secondDigit: string;
-    let thirdDigit: string;
-    let combination: string;
-
-    do {
-      secondDigit = faker.string.numeric(1);
-      thirdDigit = faker.string.numeric(1);
-      combination = secondDigit + thirdDigit;
-    } while (excludedNumbers.includes(combination));
-
-    return '06' + secondDigit + thirdDigit + faker.string.numeric(6);
-  })(),
-  isElevator: faker.helpers.arrayElement(["yes", "no", "dontknow"] as const),
-  floorNumber: faker.string.numeric(1),
-  addressAdditionalInfo: faker.location.secondaryAddress()
-};

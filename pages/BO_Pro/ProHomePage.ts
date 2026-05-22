@@ -40,7 +40,7 @@ export class SelectLanguage {
     this.page = page;
   }
 
-  readonly languagelist:string[] = ['English', 'Italiano', 'Nederlands', "Español"]
+  readonly languageList:string[] = ['English', 'Italiano', 'Nederlands', "Español"]
 
   // settings language button
   async hoverSettingsLanguageButton() {
@@ -57,4 +57,25 @@ export class SelectLanguage {
     return this.page.locator(`//li[contains(@class,'ant-dropdown-menu-item-selected')]/span[text()='${language}']`);
   }
 
+};
+
+export class SelectDrive { // TODO
+  readonly page: Page;
+
+  constructor(page: Page) {
+    this.page = page;
+  }
+
+  readonly driveList:string[] = ['Tous mes magasins', 'testAutoBOFleur1', 'testAutoBOAlim1', 'testAutoBOVin1']
+
+  // click drive selector to open the dropdown
+  openDriveSelector() {
+    return this.page.locator(`//div[@data-testid='pickupPoint']//input`);
+  }
+
+  // select drive by name
+  async selectDrive(driveName:string) {
+    await this.openDriveSelector().click();
+    await this.page.locator(`//div[contains(@class,'ant-select-item-option') and @title='${driveName}']`).click();
+  }
 };

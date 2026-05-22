@@ -21,7 +21,7 @@ export class ProDeliveryDetails {
   readonly elevatorOptions = ['yes', 'no', 'dontknow']; 
 
   // Order size options
-  readonly orderSizeOptions = ["XS - Sac à dos (0 pack)", "S - Sac cabas (1-2 packs)", "M - 1/2 chariot (3-8 packs)", "L - 1 chariot (9-15 packs)", "XL - 2 chariots (16-29 packs)", "XXL - +2 chariots (>\u00a029 packs)"];
+  readonly orderSizeOptions = ["XS - Sac à dos", "S - Sac cabas", "M - 1 Demi chariot", "L - 1 chariot", "XL - 2 chariots", "XXL - +2 chariots"];
 
   constructor(page: Page) {
     this.page = page;
@@ -240,7 +240,8 @@ export class ProDeliveryDetails {
 
   // Report made message locator
   reportMadeMessage() {
-    return this.page.locator(`//span[text()='Cotransporteur']/following::span[1]`);
+    //return this.page.locator(`//span[text()='Cotransporteur']/following::span[1]`);
+    return this.page.locator(`//div[contains(@class,"ant-card-extra")]/descendant::span`);
   }
 
   // Report CTP modal

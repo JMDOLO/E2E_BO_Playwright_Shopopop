@@ -19,7 +19,8 @@ export default [
         "createDeliveryForInternal",
         "createDeliveryForPro",
         "createDeliveryAPI",
-        "checkHistoryMessage"] }],
+        "checkHistoryMessage",
+        "checkDisputeData"] }],
     },
   },
 ];

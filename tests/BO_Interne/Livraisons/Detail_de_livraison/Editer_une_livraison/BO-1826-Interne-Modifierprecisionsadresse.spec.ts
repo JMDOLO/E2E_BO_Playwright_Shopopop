@@ -9,16 +9,13 @@ test.describe(`BO-1826 - Modifier précisions adresse @Sc8ed6f1e`, () => {
   test(`Statut "Disponible" - Modifier précisions adresse - passant @Tbf95c002`, async ({ page }) => {
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
-
-    // Modify delivery address details
-    const deliveryAddressDetails = new InternalDeliveryDetails(page);
-    // Wait for distance loading
-    await deliveryAddressDetails.waitForDistanceLoading();
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Fill new delivery adress details
     const newAddressDetails = faker.string.alphanumeric(8);
+    const deliveryAddressDetails = new InternalDeliveryDetails(page);
     await deliveryAddressDetails.deliveryAddressDetails().fill(newAddressDetails);
+    await deliveryAddressDetails.waitForDistanceLoading(); // Remove once the API distance fix has been applied
 
     // Save changes
     const saveDeliveryChanges = new InternalDeliveryPage(page);
@@ -27,6 +24,10 @@ test.describe(`BO-1826 - Modifier précisions adresse @Sc8ed6f1e`, () => {
     // Check that a success alert is displayed and close the toaster
     const deliveryDetailsSuccessMessage = new DeliveryDetailsSuccessMessage(page);
     await deliveryDetailsSuccessMessage.deliveryUpdateSuccessToaster(deliveryDetailsSuccessMessage.details);
+
+    // Refresh page to check values from database
+    await page.reload();
+    await deliveryAddressDetails.waitForDistanceLoading();
 
     // Check that adress details has been updated
     await expect(deliveryAddressDetails.deliveryAddressDetails()).toHaveValue(newAddressDetails);

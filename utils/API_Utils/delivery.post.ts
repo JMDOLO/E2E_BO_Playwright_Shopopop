@@ -108,7 +108,13 @@ export async function createDelivery(
     // Handle 204 No Content response
     let data = null;
     if (response.status !== 204) {
-      data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // Non-JSON response (e.g., 504 Cloudflare HTML page)
+        data = { raw: `${response.status} ${response.statusText} (non-JSON response, content-type: ${contentType})` };
+      }
     }
 
     return {

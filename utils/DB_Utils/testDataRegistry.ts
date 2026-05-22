@@ -33,6 +33,12 @@ interface RegistryData {
   userstodelete: number[];   // For manual cleanup
 }
 
+// Sync sleep without busy-spin — used while waiting for a contended file lock.
+const SLEEP_BUFFER = new Int32Array(new SharedArrayBuffer(4));
+function sleepSync(ms: number): void {
+  Atomics.wait(SLEEP_BUFFER, 0, 0, ms);
+}
+
 export class TestDataRegistry {
   private static readonly REGISTRY_FILE = process.env.CI
     ? path.join(os.tmpdir(), 'playwright-test-data-registry.json')      // CI: /tmp/ (shared across shards)
@@ -54,25 +60,73 @@ export class TestDataRegistry {
   }
 
   /**
-   * Save registry data to file
+   * Save registry data to file atomically (write to temp, then rename).
+   * `rename` is atomic on POSIX, so readers never see a half-written file.
    */
   private static save(data: RegistryData): void {
     try {
-      fs.writeFileSync(this.REGISTRY_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      const tmp = `${this.REGISTRY_FILE}.tmp.${process.pid}.${Date.now()}`;
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tmp, this.REGISTRY_FILE);
     } catch (error) {
       console.error('❌ Failed to save registry file:', error);
     }
   }
 
   /**
+   * Serialize a read-modify-write cycle across Playwright workers via an exclusive lockfile.
+   * Without this, two workers can both read the same baseline and overwrite each other's writes.
+   */
+  private static withLock<T>(fn: (data: RegistryData) => T): T {
+    const lockFile = `${this.REGISTRY_FILE}.lock`;
+    const STALE_LOCK_MS = 30_000;
+    const RETRY_MS = 20;
+    const MAX_ATTEMPTS = 200; // ~4s worst case
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      let acquired = false;
+      try {
+        // 'wx' = create exclusive; throws EEXIST if the lock is already held
+        fs.closeSync(fs.openSync(lockFile, 'wx'));
+        acquired = true;
+        const data = this.load();
+        return fn(data);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+
+        // Steal the lock if a previous worker crashed and left it behind
+        try {
+          const stats = fs.statSync(lockFile);
+          if (Date.now() - stats.mtimeMs > STALE_LOCK_MS) {
+            fs.unlinkSync(lockFile);
+            continue;
+          }
+        } catch { /* lock vanished mid-check — loop will re-acquire */ }
+
+        sleepSync(RETRY_MS);
+      } finally {
+        if (acquired) {
+          try { fs.unlinkSync(lockFile); } catch { /* already gone */ }
+        }
+      }
+    }
+    throw new Error(`Failed to acquire registry lock after ${MAX_ATTEMPTS} attempts (lockfile: ${lockFile})`);
+  }
+
+  /**
    * Register an errand (delivery) for cleanup
    */
   static registerErrand(errandId: number): void {
-    const data = this.load();
-    const errandsSet = new Set(data.errands);
-    errandsSet.add(errandId);
-    data.errands = Array.from(errandsSet);
-    this.save(data);
+    if (!Number.isInteger(errandId) || errandId <= 0) {
+      console.warn(`⚠️  Skipped registering invalid errand id: ${errandId}`);
+      return;
+    }
+    this.withLock((data) => {
+      const errandsSet = new Set(data.errands);
+      errandsSet.add(errandId);
+      data.errands = Array.from(errandsSet);
+      this.save(data);
+    });
     console.log(`📝 Registered errand ${errandId} for cleanup`);
   }
 
@@ -80,11 +134,16 @@ export class TestDataRegistry {
    * Register a shop user for cleanup
    */
   static registerUser(userId: number): void {
-    const data = this.load();
-    const usersSet = new Set(data.users);
-    usersSet.add(userId);
-    data.users = Array.from(usersSet);
-    this.save(data);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      console.warn(`⚠️  Skipped registering invalid user id: ${userId}`);
+      return;
+    }
+    this.withLock((data) => {
+      const usersSet = new Set(data.users);
+      usersSet.add(userId);
+      data.users = Array.from(usersSet);
+      this.save(data);
+    });
     console.log(`📝 Registered user ${userId} for cleanup`);
   }
 
@@ -130,10 +189,23 @@ export class TestDataRegistry {
   }
 
   /**
+   * Get statistics about manual delete lists
+   */
+  static getManualStats(): { errandstodelete: number; userstodelete: number } {
+    const data = this.load();
+    return {
+      errandstodelete: data.errandstodelete.length,
+      userstodelete: data.userstodelete.length,
+    };
+  }
+
+  /**
    * Clear all registered data (used after cleanup)
    */
   static clear(): void {
-    this.save({ errands: [], users: [], errandstodelete: [], userstodelete: [] });
+    this.withLock(() => {
+      this.save({ errands: [], users: [], errandstodelete: [], userstodelete: [] });
+    });
   }
 
   /**
@@ -144,15 +216,16 @@ export class TestDataRegistry {
    * @param userIds - Array of user IDs to remove
    */
   static remove(errandIds: number[], userIds: number[]): void {
-    const data = this.load();
-    const errandIdsToRemove = new Set(errandIds);
-    const userIdsToRemove = new Set(userIds);
+    this.withLock((data) => {
+      const errandIdsToRemove = new Set(errandIds);
+      const userIdsToRemove = new Set(userIds);
 
-    data.errands = data.errands.filter(id => !errandIdsToRemove.has(id));
-    data.users = data.users.filter(id => !userIdsToRemove.has(id));
-    data.errandstodelete = [];
-    data.userstodelete = [];
+      data.errands = data.errands.filter(id => !errandIdsToRemove.has(id));
+      data.users = data.users.filter(id => !userIdsToRemove.has(id));
+      data.errandstodelete = [];
+      data.userstodelete = [];
 
-    this.save(data);
+      this.save(data);
+    });
   }
 }

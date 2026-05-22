@@ -6,17 +6,19 @@ import { ProDeliveryDetails } from '@pages/BO_Pro/Livraisons/Liste_des_livraison
 import { faker } from '@faker-js/faker';
 import { DeliveryDetailsSuccessMessage } from '@pages/BO_Both/SuccessMessages';
 
-test.describe(`BO-1829 - Signaler un ctp @S059f5fd2`, () => {
+test.describe.fixme(`BO-1829 - Signaler un ctp @S059f5fd2`, () => { // remplacé par BO-3907 & BO-3908 à créer
   test(`Statut "Réservée" - Signaler CTP - passant @Tad7a8982`, async ({ page }) => {
 
     // Create delivery via API
-    const deliveryId = await createDeliveryAPI();
+    const { id: deliveryId } = await createDeliveryAPI();
 
     // Database delivery setup for this test
     // Adding a CTP and Reserved statut
+    const dateStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
     await updateErrandTable(deliveryId, [
     { field: 'delivery_man_id', value: users.CTP.id },
     { field: 'status', value: 2 },
+    { field: 'updated_at', value: dateStr },
     ]);
 
     // Navigate to the created delivery

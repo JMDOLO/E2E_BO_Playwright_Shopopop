@@ -18,7 +18,7 @@ test.describe(`BO-3372 - BO Pro - Modifier taille de la commande @S46b6720d`, ()
     linkTest('@T396ee3da');
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Initial order size
     const initialOrderSize = await orderSize.orderSizeValue().innerText();

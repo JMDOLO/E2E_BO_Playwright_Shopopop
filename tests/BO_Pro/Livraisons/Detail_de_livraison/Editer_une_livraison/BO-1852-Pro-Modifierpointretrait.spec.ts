@@ -12,7 +12,7 @@ test.describe(`BO-1852 - Modifier le point de retrait @Sfecd91cf`, () => {
     deliveryWithdrawalSuccessMessage = new DeliveryDetailsSuccessMessage(page);
 
     // Create delivery via API and navigate to it
-    await buildAndGotoDeliveryURL(page, await createDeliveryAPI());
+    await buildAndGotoDeliveryURL(page, (await createDeliveryAPI()).id);
 
     // Click on edit delivery withdrawal button
     await deliveryWithdrawal.clickEditButton(deliveryWithdrawal.pickupPointBlockTitle);

@@ -7,16 +7,22 @@
  * 2. Close the database connection pool
  */
 
-import { closeDBPool } from '@utils/DB_Utils/db.config';
+import { closeDBPool, ensureDBConnection } from '@utils/DB_Utils/db.config';
+import { closeAllPGPools } from '@utils/PG_Utils/pg.config';
 import { TestDataRegistry } from '@utils/DB_Utils/testDataRegistry';
 import {
   deleteErrandsByIds,
   deleteShopUsersByIds,
   deleteAddressByIds,
-  collectAddressIdsFromErrands,
+  deleteDropOffByIds,
+  deleteKnownDropOffByIds,
   collectAddressIdsFromUsers,
+  collectDropOffIdsFromErrands,
+  collectHashesFromDropOffs,
+  collectKnownDropOffIdsFromKnownDropOffs,
 } from '@utils/DB_Utils/deleteData.db';
-import { deleteErrandsFromES } from '@utils/ES_Utils/deleteData.es';
+import { deleteErrandsFromES, deleteUsersFromES } from '@utils/ES_Utils/deleteData.es';
+import { deletePgRows, deleteTransactionsByErrandIds } from '@utils/PG_Utils/deleteData.pg';
 
 /**
  * Cleanup test data from the database
@@ -26,33 +32,46 @@ import { deleteErrandsFromES } from '@utils/ES_Utils/deleteData.es';
  * @param users - Array of user IDs to delete
  */
 export async function cleanupTestData(errands: number[], users: number[]): Promise<void> {
-  // Step 1: Collect address IDs BEFORE deleting errands and users
-  console.log('📋 Collecting address IDs for cleanup...\n');
+  // Step 1: Collect IDs BEFORE deleting (FK references won't exist after deletion)
+  console.log('📋 Collecting IDs for cleanup...\n');
 
-  const addressIdsFromErrands = await collectAddressIdsFromErrands(errands);
-  const addressIdsFromUsers = await collectAddressIdsFromUsers(users);
+  // Addresses are only linked to users via user_has_address (errand.address_id is no longer populated)
+  const allAddressIds = await collectAddressIdsFromUsers(users);
 
-  // Merge and deduplicate address IDs
-  const allAddressIds = [...new Set([...addressIdsFromErrands, ...addressIdsFromUsers])];
+  const dropOffIds = await collectDropOffIdsFromErrands(errands);
+  const hashes = await collectHashesFromDropOffs(dropOffIds);
+  const knownDropOffIds = await collectKnownDropOffIdsFromKnownDropOffs(hashes);
 
-  console.log(`   Total unique addresses to delete: ${allAddressIds.length}\n`);
+  console.log(`   Total unique addresses to delete: ${allAddressIds.length}`);
+  console.log(`   Total drop_offs to delete: ${dropOffIds.length}`);
+  console.log(`   Total orphaned known_drop_offs to delete: ${knownDropOffIds.length}\n`);
 
-  // Step 2: Delete all registered test data in bulk
+  // Step 2: Delete in FK-safe order (PG first, then MySQL)
   console.log('🗑️  Deleting test data...\n');
 
-  // Delete sequentially to respect FK constraints:
-  // 1. Errands first (errand has FK to shop_user: shopper_id, delivery_man_id)
-  // 2. Then users and all related tables
-  // 3. Finally addresses (referenced by both errands and users)
+  await deletePgRows('backoffice', 'disputes', 'delivery_id', errands);
+  await deleteTransactionsByErrandIds(errands);
+  await deletePgRows('kyc', 'moderation_events', 'delivery_id', errands);
   await deleteErrandsByIds(errands);
+  await deleteDropOffByIds(dropOffIds);
+  await deleteKnownDropOffByIds(knownDropOffIds);
   await deleteErrandsFromES(errands);
+  await deletePgRows('kyc', 'users_documents', 'user_id', users);
+  await deletePgRows('kyc', 'moderation_levels', 'user_id', users);
   await deleteShopUsersByIds(users);
+  await deleteUsersFromES(users);
   await deleteAddressByIds(allAddressIds);
 
   console.log('\n✅ Test data cleanup completed\n');
 }
 
 async function globalTeardown() {
+  // Skip teardown in CI setup-auth job (no DB, no tests, nothing to clean)
+  if (process.env.AUTH_SETUP_ONLY) {
+    console.log('\n⏭️  AUTH_SETUP_ONLY mode, skipping global teardown\n');
+    return;
+  }
+
   console.log('\n🧹 === GLOBAL TEARDOWN ===\n');
 
   try {
@@ -65,25 +84,31 @@ async function globalTeardown() {
     if (stats.errands === 0 && stats.users === 0) {
       console.log('✅ No test data to clean up\n');
     } else {
-      // Step 2: Get registered test data
-      const errands = TestDataRegistry.getErrands();
-      const users = TestDataRegistry.getUsers();
-
-      // Step 3: Cleanup test data using reusable function
-      await cleanupTestData(errands, users);
-
-      // Step 4: Clear the registry
-      TestDataRegistry.clear();
+      // Timeout to avoid hanging indefinitely on stale DB connections
+      const TEARDOWN_TIMEOUT = 30000;
+      await Promise.race([
+        (async () => {
+          await ensureDBConnection();
+          const errands = TestDataRegistry.getErrands();
+          const users = TestDataRegistry.getUsers();
+          await cleanupTestData(errands, users);
+          TestDataRegistry.clear();
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Teardown cleanup timed out after ${TEARDOWN_TIMEOUT / 1000}s`)), TEARDOWN_TIMEOUT)
+        ),
+      ]);
     }
-
-    // Step 5: Close the database connection pool
-    await closeDBPool();
-    console.log('✅ Database connection pool closed successfully\n');
   } catch (error) {
     console.error('❌ Error during global teardown:', error);
     console.error('⚠️  WARNING: Test data may not have been cleaned up!');
     console.error('   Check database manually for orphaned test data\n');
-    // Don't throw - we still want to close DB pool
+  } finally {
+    await Promise.race([
+      Promise.all([closeDBPool(), closeAllPGPools()]),
+      new Promise(resolve => setTimeout(resolve, 5000)),
+    ]);
+    console.log('✅ Database connection pools closed (or timed out)\n');
   }
 
   console.log('🎉 Global teardown completed\n');
