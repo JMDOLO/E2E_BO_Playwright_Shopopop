@@ -1,0 +1,75 @@
+{
+  "//": "Destinataires -> table known_drop_off, page /recipients/${known_drop_off.internal_uuid}",
+  "recipient_pro": {
+    "name": "Bo Pro",
+    "firstname": "Bo",
+    "lastname": "Pro",
+    "email": "bopro@test.com",
+    "phone": "+33612345678",
+    "address": "305 Bouchais 44119 Grandchamp-des-Fontaines",
+    "shortaddress": "Bouchais",
+    "street": "305 Bouchais",
+    "zipCode": "44119",
+    "city": "Grandchamp-des-Fontaines",
+    "type": "PRIVATE_HOME",
+    "floor": 0,
+    "elevator": false,
+    "id": 521906,
+    "internal_uuid": "bfc81496-6e15-555e-9a37-cf0b6ff6ac68"
+  },
+
+  "recipient_interne": {
+    "name": "Bo Interne",
+    "firstname": "Bo",
+    "lastname": "Interne",
+    "email": "bointerne@test.com",
+    "phone": "+33612345678",
+    "address": "305 Bouchais 44119 Grandchamp-des-Fontaines",
+    "shortaddress": "Bouchais",
+    "street": "305 Bouchais",
+    "zipCode": "44119",
+    "city": "Grandchamp-des-Fontaines",
+    "type": "PRIVATE_HOME",
+    "floor": 0,
+    "elevator": false,
+    "id": 521917,
+    "internal_uuid": "2be7ad95-20eb-531f-8bd4-84d33f753c64"
+  },
+
+  
+  "//": "CTP -> table shop_user, page /deliverers/${shop_user.id}",
+  "CTP": {
+    "id": 36,
+    "name": "Test Auto",
+    "phone": "+33612345678",
+    "email": "testauto@shopopop.com"
+  },
+
+  "//": "Users BO -> table users, page /users/${users.id}",
+  "user_pro": {
+    "firstname": "Qa",
+    "lastname": "Pro",
+    "email": "qa-team+pro@shopopop.com",
+    "phone": "+33612345678",
+    "birth_date": "1981-11-26",
+    "id": 515753
+  },
+
+  "user_interne": {
+    "firstname": "Qa",
+    "lastname": "Interne",
+    "email": "qa-team+int@shopopop.com",
+    "phone": "+33612345678",
+    "birth_date": "1981-11-26",
+    "id": 532021
+  },
+
+  "user_pro1": {
+    "firstname": "Qa",
+    "lastname": "Pro1",
+    "email": "qa-team+pro1@shopopop.com",
+    "phone": "+33612345678",
+    "birth_date": "1981-11-26",
+    "id": 535098
+  }
+}

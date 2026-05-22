@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--headless"
+      ]
+    },
+    "testomatio": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@testomatio/mcp@latest",
+        "--project",
+        "back-office-c96f6"
+      ],
+      "env": {
+        "TESTOMATIO_API_TOKEN": "testomat_1gxkOGBYPiGGZn0-bsMZYQ-g69GixbUK6g1770994969"
+      }
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest"
+      ],
+      "env": {}
+    },
+    "atlassian": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.atlassian.com/v1/mcp"
+      ]
+    }
+  }
+}
