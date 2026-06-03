@@ -12,8 +12,8 @@ on:
         required: false
         default: 'Playwright Automation'
         type: string
-  schedule:
-    - cron: '45 11 * * 1-5'
+  # schedule:
+    # - cron: '45 11 * * 1-5'
 jobs:
   # Job 1: Launch Testomat.io run (only for scheduled runs or manual with checkbox)
   launch-testomat-run:
